@@ -1,0 +1,68 @@
+name: BlackDuck Scan
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  blackduck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install \
+            bc \
+            build-essential \
+            ninja-build
+
+      - name: Checkout devtools
+        uses: actions/checkout@v4
+
+      - name: Create build folder
+        run: |
+          git submodule update --init --recursive
+          mkdir build
+
+      - name: Build devtools
+        run: |
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build .
+        working-directory: build
+
+      - name: Run INTELLIGENT Synopsys Detect
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: synopsys-sig/detect-action@v0.3.0
+        env:
+          DETECT_TOOLS: DETECTOR,SIGNATURE_SCAN,BINARY_SCAN,IMPACT_ANALYSIS,POLARIS,DOCKER,BAZEL
+          DETECT_POLICY_CHECK_FAIL_ON_SEVERITIES: ALL
+          DETECT_PROJECT_NAME: Open-CMSIS:devtools
+          DETECT_PROJECT_VERSION_NAME: devtools_forked
+          DETECT_CODE_LOCATION_NAME: devtools_forked
+          DETECT_PROJECT_CODELOCATION_UNMAP: true
+          DETECT_EXCLUDED_DETECTOR_TYPES: GIT
+          DETECT_SOURCE_PATH: './'
+          DETECT_EXCLUDED_DIRECTORIES: '/external/,/build/'
+          DETECT_BLACKDUCK_SIGNATURE_SCANNER_EXCLUSION_NAME_PATTERN: '/external/,/build/'
+          DETECT_BLACKDUCK_SIGNATURE_SCANNER_SNIPPET_MATCHING: FULL_SNIPPET_MATCHING
+          DETECT_BLACKDUCK_SIGNATURE_SCANNER_INDIVIDUAL_FILE_MATCHING: All
+          DETECT_BLACKDUCK_SIGNATURE_SCANNER_UPLOAD_SOURCE_MODE: true
+          DETECT_PROJECT_TAGS: ApplyAllVulnsPolicyAsBlocker
+        with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            detect-version: 7.9.0
+            blackduck-url: ${{ secrets.BLACKDUCK_URL }}
+            blackduck-api-token: ${{ secrets.BLACKDUCK_API_TOKEN }}
+            scan-mode: 'INTELLIGENT'
+            fail-on-all-policy-severities: true
+
+      - name: Run RAPID Synopsys Detect
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: synopsys-sig/detect-action@v0.3.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          detect-version: 7.9.0
+          blackduck-url: ${{ secrets.BLACKDUCK_URL }}
+          blackduck-api-token: ${{ secrets.BLACKDUCK_API_TOKEN }}
+          fail-on-all-policy-severities: true
