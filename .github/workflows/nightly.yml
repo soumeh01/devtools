@@ -9,7 +9,7 @@ permissions: read-all
 
 jobs:
   buildmgr:
-    if: github.repository == 'Open-CMSIS-Pack/devtools'
+    if: github.repository == 'soumeh01/devtools'
     uses: soumeh01/devtools/.github/workflows/buildmgr.yml@main
   packchk:
     needs: [buildmgr]
