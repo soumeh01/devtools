@@ -5,25 +5,27 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+permissions: read-all
+
 jobs:
   buildmgr:
     if: github.repository == 'Open-CMSIS-Pack/devtools'
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/buildmgr.yml@main
+    uses: soumeh01/devtools/.github/workflows/buildmgr.yml@main
   packchk:
     needs: [buildmgr]
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/packchk.yml@main
+    uses: soumeh01/devtools/.github/workflows/packchk.yml@main
   packgen:
     needs: [packchk]
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/packgen.yml@main
+    uses: soumeh01/devtools/.github/workflows/packgen.yml@main
   projmgr:
     needs: [packgen]
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/projmgr.yml@main
+    uses: soumeh01/devtools/.github/workflows/projmgr.yml@main
   svdconv:
     needs: [projmgr]
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/svdconv.yml@main
+    uses: soumeh01/devtools/.github/workflows/svdconv.yml@main
   test_libs:
     needs: [svdconv]
-    uses: Open-CMSIS-Pack/devtools/.github/workflows/test_libs.yml@main
+    uses: soumeh01/devtools/.github/workflows/test_libs.yml@main
   coverage:
     runs-on: ubuntu-22.04
     needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
