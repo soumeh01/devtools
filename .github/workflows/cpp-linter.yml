@@ -22,6 +22,9 @@ concurrency:
 env:
   linter_report: "cppcheck_report.md"
 
+permissions:
+  contents: read
+
 jobs:
 
   lint:
