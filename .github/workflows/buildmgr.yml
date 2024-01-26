@@ -546,18 +546,18 @@ jobs:
           genhtml coverage_buildmgr.info --output-directory coverage_buildmgr --branch-coverage
         working-directory: ./build/tools/buildmgr
 
-      - name: Upload Report to Codecov
-        if: ${{ !github.event.repository.private }}
-        uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
-        with:
-          action: codecov/codecov-action@v3
-          with: |
-            files: ./build/tools/buildmgr/coverage_buildmgr.info
-            fail_ci_if_error: true
-            flags: buildmgr-cov
-            functionalities: fix
-          attempt_limit: 3
-          attempt_delay: 5000
+      # - name: Upload Report to Codecov
+      #   if: ${{ !github.event.repository.private }}
+      #   uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
+      #   with:
+      #     action: codecov/codecov-action@v3
+      #     with: |
+      #       files: ./build/tools/buildmgr/coverage_buildmgr.info
+      #       fail_ci_if_error: true
+      #       flags: buildmgr-cov
+      #       functionalities: fix
+      #     attempt_limit: 3
+      #     attempt_delay: 5000
 
       - name: Archive coverage report
         uses: actions/upload-artifact@694cdabd8bdb0f10b2cea11669e1bf5453eed0a6 # v4.2.0
