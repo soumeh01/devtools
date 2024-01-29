@@ -32,6 +32,7 @@ jobs:
                  name="Event File"
              fi
              gh api $url > "$name.zip"
+             echo $name
              unzip -d "$name" "$name.zip"
            done
 
