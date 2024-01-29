@@ -39,6 +39,7 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@e780361cd1fc1b1a170624547b3ffda64787d365 # v2.12.0
         with:
           commit: ${{ github.event.workflow_run.head_sha }}
+          event_file: artifacts/Event File/event.json
           report_individual_runs: true
           event_name: ${{ github.event.workflow_run.event }}
           files: "artifacts/**/*.xml"
