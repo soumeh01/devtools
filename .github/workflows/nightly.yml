@@ -3,11 +3,30 @@ name: nightly
 on:
   workflow_dispatch:
   schedule:
-    - cron: '40 13 * * *'
+    - cron: '0 0 * * *'
 
 jobs:
+  buildmgr:
+    if: github.repository == 'Open-CMSIS-Pack/devtools'
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/buildmgr.yml@main
+  packchk:
+    needs: [buildmgr]
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/packchk.yml@main
+  packgen:
+    needs: [packchk]
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/packgen.yml@main
+  projmgr:
+    needs: [packgen]
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/projmgr.yml@main
+  svdconv:
+    needs: [projmgr]
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/svdconv.yml@main
+  test_libs:
+    needs: [svdconv]
+    uses: Open-CMSIS-Pack/devtools/.github/workflows/test_libs.yml@main
   coverage:
     runs-on: ubuntu-22.04
+    needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
     steps:
       - name: Install dependencies
         run: |
@@ -27,7 +46,7 @@ jobs:
         working-directory: coverage/
 
       - name: Archive merged coverage report
-        uses: actions/upload-artifact@26f96dfa697d77e81fd5907df203aa23a56210a8 # v4.3.0
+        uses: actions/upload-artifact@694cdabd8bdb0f10b2cea11669e1bf5453eed0a6 # v4.2.0
         with:
           name: merged-coverage-report
           path: ./coverage/merged_coverage.info
