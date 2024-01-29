@@ -34,6 +34,7 @@ jobs:
              gh api $url > "$name.zip"
              echo $name
              unzip -d "$name" "$name.zip"
+             ls -l
            done
 
       - name: Publish Test Results
