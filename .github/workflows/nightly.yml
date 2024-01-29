@@ -7,7 +7,6 @@ on:
 
 jobs:
   buildmgr:
-    if: github.repository == 'soumeh01/devtools'
     uses: soumeh01/devtools/.github/workflows/buildmgr.yml@main
   packchk:
     needs: [buildmgr]
