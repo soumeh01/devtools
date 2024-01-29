@@ -3,7 +3,7 @@ name: nightly
 on:
   workflow_dispatch:
   schedule:
-    - cron: '36 13 * * *'
+    - cron: '40 13 * * *'
 
 jobs:
   buildmgr:
