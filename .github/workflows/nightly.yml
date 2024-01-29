@@ -6,26 +6,8 @@ on:
     - cron: '40 13 * * *'
 
 jobs:
-  buildmgr:
-    uses: soumeh01/devtools/.github/workflows/buildmgr.yml@main
-  packchk:
-    needs: [buildmgr]
-    uses: soumeh01/devtools/.github/workflows/packchk.yml@main
-  packgen:
-    needs: [packchk]
-    uses: soumeh01/devtools/.github/workflows/packgen.yml@main
-  projmgr:
-    needs: [packgen]
-    uses: soumeh01/devtools/.github/workflows/projmgr.yml@main
-  svdconv:
-    needs: [projmgr]
-    uses: soumeh01/devtools/.github/workflows/svdconv.yml@main
-  test_libs:
-    needs: [svdconv]
-    uses: soumeh01/devtools/.github/workflows/test_libs.yml@main
   coverage:
     runs-on: ubuntu-22.04
-    needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
     steps:
       - name: Install dependencies
         run: |
