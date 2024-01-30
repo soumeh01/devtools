@@ -3,26 +3,27 @@ name: nightly
 on:
   workflow_dispatch:
   schedule:
-    - cron: '40 13 * * *'
+    - cron: '0 0 * * *'
 
 jobs:
   buildmgr:
-    uses: soumeh01/devtools/.github/workflows/buildmgr.yml@main
+    if: github.repository == 'soumeh01/devtools'
+    uses: soumeh01/devtools/.github/workflows/buildmgr.yml@test_nightly
   packchk:
     needs: [buildmgr]
-    uses: soumeh01/devtools/.github/workflows/packchk.yml@main
+    uses: soumeh01/devtools/.github/workflows/packchk.yml@test_nightly
   packgen:
     needs: [packchk]
-    uses: soumeh01/devtools/.github/workflows/packgen.yml@main
+    uses: soumeh01/devtools/.github/workflows/packgen.yml@test_nightly
   projmgr:
     needs: [packgen]
-    uses: soumeh01/devtools/.github/workflows/projmgr.yml@main
+    uses: soumeh01/devtools/.github/workflows/projmgr.yml@test_nightly
   svdconv:
     needs: [projmgr]
-    uses: soumeh01/devtools/.github/workflows/svdconv.yml@main
+    uses: soumeh01/devtools/.github/workflows/svdconv.yml@test_nightly
   test_libs:
     needs: [svdconv]
-    uses: soumeh01/devtools/.github/workflows/test_libs.yml@main
+    uses: soumeh01/devtools/.github/workflows/test_libs.yml@test_nightly
   coverage:
     runs-on: ubuntu-22.04
     needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
@@ -38,6 +39,12 @@ jobs:
         with:
           pattern: coverage-report-*
           path: coverage/
+          merge-multiple: true
+
+      - name: Consolidate coverage data
+        run: |
+          ls -l
+        working-directory: coverage/
 
       - name: Consolidate coverage data
         run: |
