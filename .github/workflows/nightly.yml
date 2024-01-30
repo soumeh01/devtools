@@ -3,10 +3,11 @@ name: nightly
 on:
   workflow_dispatch:
   schedule:
-    - cron: '40 13 * * *'
+    - cron: '0 0 * * *'
 
 jobs:
   buildmgr:
+    if: github.repository == 'soumeh01/devtools'
     uses: soumeh01/devtools/.github/workflows/buildmgr.yml@test_nightly
   packchk:
     needs: [buildmgr]
@@ -22,11 +23,10 @@ jobs:
     uses: soumeh01/devtools/.github/workflows/svdconv.yml@test_nightly
   test_libs:
     needs: [svdconv]
-    uses: soumeh01/devtools/.github/workflows/test_libs.yml@main
+    uses: soumeh01/devtools/.github/workflows/test_libs.yml@test_nightly
   coverage:
     runs-on: ubuntu-22.04
-    # needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
-    needs: [ buildmgr]
+    needs: [ buildmgr, packchk, packgen, projmgr, svdconv, test_libs ]
     steps:
       - name: Install dependencies
         run: |
