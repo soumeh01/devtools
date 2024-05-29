@@ -41,7 +41,6 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   setup:
     uses: Open-CMSIS-Pack/devtools/.github/workflows/shared_setup_env.yml@main
