@@ -3,6 +3,7 @@ include(ProjectVersionFromGitTag)
 get_version_from_git_tag("tools/buildmgr/")
 
 project(CMSIS_Build VERSION "${PROJECT_VERSION}")
+message(STATUS "-------> is: ${PROJECT_VERSION}")
 dump_cmake_project_version()
 
 configure_file(cbuildgen/src/ProductInfo.h.in cbuildgen/include/ProductInfo.h)
