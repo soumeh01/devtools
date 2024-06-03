@@ -64,7 +64,9 @@ jobs:
       - name: Checkout devtools
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
+          fetch-depth: 0
           submodules: true
+          fetch-tags: true
 
       # https://github.com/Open-CMSIS-Pack/devtools-build-action
       - name: Build
