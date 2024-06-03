@@ -82,6 +82,11 @@ jobs:
           path: ./build/tools/buildmgr/cbuildgen/${{ matrix.target }}-${{ matrix.arch }}/Release/cbuildgen${{ matrix.binary_extension }}
           retention-days: ${{ needs.setup.outputs.retention_days }}
           if-no-files-found: error
+      - name: check version
+        run: |
+          cp ./build/tools/buildmgr/cbuildgen/${{ matrix.target }}-${{ matrix.arch }}/Release/cbuildgen${{ matrix.binary_extension }} ./cbuildgen
+          chmod -R +x ./cbuildgen
+          ./cbuildgen -V
 
   docs:
     if: |
