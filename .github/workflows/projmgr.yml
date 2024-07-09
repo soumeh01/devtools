@@ -66,7 +66,12 @@ jobs:
         with:
           submodules: true
           fetch-tags: true
+          fetch-depth: 0 # Fetch all history so that all tags are included
 
+      - name: Verify Tags
+        run: |
+          git tag
+          
       # https://github.com/Open-CMSIS-Pack/devtools-build-action
       - name: Build
         uses: Open-CMSIS-Pack/devtools-build-action@79c0fc7d7bc834eb12aa1e319756deab0dda773f # arm64
