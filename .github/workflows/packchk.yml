@@ -238,20 +238,6 @@ jobs:
           genhtml coverage_packchk.info --output-directory coverage_packchk --branch-coverage
         working-directory: ./build/tools/packchk
 
-      - name: Upload Report to Codecov
-        if: ${{ !github.event.repository.private }}
-        uses: Wandalen/wretry.action@6feedb7dedadeb826de0f45ff482b53b379a7844 # v3.5.0
-        with:
-          action: codecov/codecov-action@v4
-          with: |
-            files: ./build/tools/packchk/coverage_packchk.info
-            fail_ci_if_error: true
-            flags: packchk-cov
-            token: ${{ secrets.CODECOV_TOKEN }}
-            verbose: true
-          attempt_limit: 3
-          attempt_delay: 5000
-
       - name: Archive coverage report
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
