@@ -49,10 +49,10 @@ packchk options:
 This tutorial aims to get you up and running with `packchk` using **CMake**. We
 recommend this tutorial as a starting point. In order to build `packchk` and
 run related tests. Please employ the sequence of steps mentioned
-[here](./../../../README.md).
+[here](./../../README.md).
 
 > Note: `PackChkIntegTests` makes use of test packs from
-[test](./../../../test/packs/ARM) & [data](./../test/data) directory contains the example
+[test](./../../test/packs/ARM) & [data](./test/data) directory contains the example
 pack required for integration tests.
 
 ### Usage Examples
