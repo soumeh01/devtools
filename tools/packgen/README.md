@@ -20,7 +20,7 @@ the [CMSIS-Toolbox](https://github.com/Open-CMSIS-Pack/cmsis-toolbox/blob/main/d
 For validating and compressing pack files, the `packchk` and `7-zip` utilities
 shall be in the `PATH` system environment variable:
 
-- [packchk](https://github.com/Open-CMSIS-Pack/devtools/releases/tag/tools%2Fpackchk%2F1.4.1)
+- [packchk](https://github.com/Open-CMSIS-Pack/devtools/releases/tag/tools/packchk/1.4.1)
 - [7-zip](https://www.7-zip.org/)
 
 ## Usage
