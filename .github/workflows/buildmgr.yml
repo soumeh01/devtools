@@ -124,7 +124,7 @@ jobs:
 
       - name: Build documentation
         run: |
-          cmake -G Ninja ..
+          cmake -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
           echo "::add-matcher::.github/doxygen.json"
           cmake --build . --target buildmgr-docs
           echo "::remove-matcher owner=doxygen::"
@@ -534,7 +534,7 @@ jobs:
 
       - name: Build and run buildmgr tests
         run: |
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCOVERAGE=ON ..
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCOVERAGE=ON  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
           cmake --build . --target CbuildUnitTests
           ./tools/buildmgr/test/unittests/linux-amd64/Debug/CbuildUnitTests --gtest_output=xml:test_reports/cbuildunittests-report-linux-amd64.xml
           cmake --build . --target CbuildIntegTests

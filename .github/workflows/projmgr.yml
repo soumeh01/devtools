@@ -113,7 +113,7 @@ jobs:
         if: matrix.pyswig
         uses: Open-CMSIS-Pack/devtools-build-action@f447c00e0c2a58681faacce9312ead5813f93888 # arm64
         with:
-          add_cmake_variables: -DSWIG_LIBS=ON
+          add_cmake_variables: -DSWIG_LIBS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           add_cmake_build_args: --config Release
           arch: ${{ matrix.arch }}
           build_folder: buildswig
@@ -123,7 +123,7 @@ jobs:
         if: matrix.goswig
         uses: Open-CMSIS-Pack/devtools-build-action@f447c00e0c2a58681faacce9312ead5813f93888 # arm64
         with:
-          add_cmake_variables: -DSWIG_LIBS=ON
+          add_cmake_variables: -DSWIG_LIBS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           add_cmake_build_args: --config Release
           arch: ${{ matrix.arch }}
           build_folder: buildswig
@@ -387,7 +387,7 @@ jobs:
       - name: Build ProjMgrUnitTests
         uses: Open-CMSIS-Pack/devtools-build-action@f447c00e0c2a58681faacce9312ead5813f93888 # arm64
         with:
-          add_cmake_variables: -DCOVERAGE=ON
+          add_cmake_variables: -DCOVERAGE=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           arch: amd64
           build_type: Debug
           target: ProjMgrUnitTests
