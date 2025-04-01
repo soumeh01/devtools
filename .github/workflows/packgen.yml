@@ -228,7 +228,7 @@ jobs:
       - name: Build PackGenUnitTests
         uses: Open-CMSIS-Pack/devtools-build-action@f447c00e0c2a58681faacce9312ead5813f93888 # arm64
         with:
-          add_cmake_variables: -DCOVERAGE=ON
+          add_cmake_variables: -DCOVERAGE=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           arch: amd64
           build_type: Debug
           target: PackGenUnitTests

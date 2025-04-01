@@ -102,6 +102,7 @@ protected:
   char* m_envp[4];
 };
 
+
 TEST_F(ProjMgrUnitTests, Validate_Logger) {
   StdStreamRedirect streamRedirect;
   auto printLogMsgs = []() {
