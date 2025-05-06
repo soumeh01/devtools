@@ -64,7 +64,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
@@ -81,6 +81,15 @@ jobs:
         with:
           target: cbuildgen
           arch: ${{ matrix.arch }}
+
+      - name: Strip projmgr release binary
+        if: |
+          github.event_name == 'release' &&
+          (startsWith(matrix.runs_on, 'macos') || startsWith(matrix.runs_on, 'ubuntu'))
+        run: |
+          binary_path="./build/tools/buildmgr/cbuildgen/${{ matrix.target }}-${{ matrix.arch }}/Release/cbuildgen${{ matrix.binary_extension }}"      
+          echo "Stripping binary at: $binary_path"
+          strip "$binary_path"
 
       - name: Archive cbuildgen
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -102,7 +111,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
@@ -201,7 +210,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
@@ -223,39 +232,39 @@ jobs:
           mkdir -p tools/buildmgr/cbuildgen/distribution/doc
 
       - name: Download cbuildgen linux-amd64
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-linux-amd64
           path: tools/buildmgr/cbuildgen/distribution/bin/
 
       - name: Download cbuildgen linux-arm64
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-linux-arm64
           path: tools/buildmgr/cbuildgen/distribution/bin/
 
       - name: Download cbuildgen macos-amd64
         if: ${{ !github.event.repository.private }}
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-darwin-amd64
           path: tools/buildmgr/cbuildgen/distribution/bin/
 
       - name: Download cbuildgen macos-arm64
         if: ${{ !github.event.repository.private }}
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-darwin-arm64
           path: tools/buildmgr/cbuildgen/distribution/bin/
 
       - name: Download cbuildgen windows-amd64
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-windows-amd64
           path: tools/buildmgr/cbuildgen/distribution/bin/
 
       - name: Download cbuildgen windows-arm64
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuildgen-windows-arm64
           path: tools/buildmgr/cbuildgen/distribution/bin/
@@ -266,7 +275,7 @@ jobs:
         working-directory: tools/buildmgr/cbuildgen/distribution/bin
 
       - name: Download documentation
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: documentation
           path: tools/buildmgr/cbuildgen/distribution/doc/
@@ -334,7 +343,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
@@ -396,13 +405,13 @@ jobs:
           path: ${{ env.CMSIS_PACK_ROOT }}
 
       - name: Download cbuild_install
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuild_install
           path: ${{ github.workspace }}
 
       - name: Download deb_package
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: deb_package
           path: ${{ github.workspace }}
@@ -493,7 +502,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
       - name: Install dependencies
@@ -580,19 +589,19 @@ jobs:
           genhtml coverage_buildmgr.info --output-directory coverage_buildmgr --branch-coverage
         working-directory: ./build/tools/buildmgr
 
-      - name: Upload Report to Codecov
-        if: ${{ !github.event.repository.private }}
-        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
-        with:
-          action: codecov/codecov-action@v4
-          with: |
-            files: ./build/tools/buildmgr/coverage_buildmgr.info
-            fail_ci_if_error: true
-            flags: buildmgr-cov
-            token: ${{ secrets.CODECOV_TOKEN }}
-            verbose: true
-          attempt_limit: 3
-          attempt_delay: 5000
+      # - name: Upload Report to Codecov
+        # if: ${{ !github.event.repository.private }}
+        # uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        # with:
+          # action: codecov/codecov-action@v4
+          # with: |
+            # files: ./build/tools/buildmgr/coverage_buildmgr.info
+            # fail_ci_if_error: true
+            # flags: buildmgr-cov
+            # token: ${{ secrets.CODECOV_TOKEN }}
+            # verbose: true
+          # attempt_limit: 3
+          # attempt_delay: 5000
 
       - name: Archive coverage report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -619,12 +628,12 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
       - name: Download cbuild_install
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuild_install
           path: ${{ github.workspace }}
@@ -664,12 +673,12 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
       - name: Download cbuild_install
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cbuild_install
           path: ${{ github.workspace }}
@@ -699,7 +708,7 @@ jobs:
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
           egress-policy: audit
 
