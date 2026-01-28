@@ -66,7 +66,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout devtools
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
           fetch-depth: 0
@@ -119,6 +119,8 @@ jobs:
         ((github.event.schedule != '') && (!github.event.repository.private))
     runs-on: ubuntu-22.04
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - name: Harden Runner
         if: ${{ !github.event.repository.private }}
@@ -127,7 +129,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout devtools
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
           fetch-depth: ${{ github.event_name == 'push' && '0' || '1' }}
@@ -175,7 +177,7 @@ jobs:
         run: tar -cvjf /tmp/doc.tbz2 .
         working-directory: ./build/tools/buildmgr/docs/doxygen/output/html/
 
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
         with:
           ref: gh-pages
@@ -237,7 +239,7 @@ jobs:
             python3
 
       - name: Checkout devtools
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Create distribution folders
         run: |
@@ -383,7 +385,7 @@ jobs:
         run: choco install -y unzip wget ninja
 
       - name: Checkout devtools
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
 
@@ -528,7 +530,7 @@ jobs:
             lcov
 
       - name: Checkout devtools
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
 

@@ -83,9 +83,11 @@ public:
   RpcArgs::SuccessResult Resolve(const string& context) override;
   RpcArgs::SuccessResult LoadPacks(void) override;
   RpcArgs::SuccessResult LoadSolution(const string& solution, const string& activeTarget) override;
+  RpcArgs::ContextInfo GetContextInfo(const string& context) override;
   RpcArgs::UsedItems GetUsedItems(const string& context) override;
   RpcArgs::PacksInfo GetPacksInfo(const string& context, const bool& all) override;
   RpcArgs::SuccessResult SelectPack(const string& context, const RpcArgs::PackReference& pack) override;
+  RpcArgs::VariablesResult GetVariables(const string& context) override;
   RpcArgs::DeviceList GetDeviceList(const string& context, const string& namePattern, const string& vendor) override;
   RpcArgs::DeviceInfo GetDeviceInfo(const string& id) override;
   RpcArgs::BoardList GetBoardList(const string& context, const string& namePattern, const string& vendor) override;
@@ -360,13 +362,39 @@ RpcArgs::SuccessResult RpcHandler::SelectPack(const string& context, const RpcAr
   return result;
 }
 
+RpcArgs::ContextInfo RpcHandler::GetContextInfo(const string& context) {
+  RpcArgs::ContextInfo contextInfo;
+  RpcDataCollector dc(GetActiveTarget(context));
+  contextInfo.success = true;
+  dc.CollectUsedComponents(contextInfo.components);
+  // get all references, even if they are not selected , because it is useful for client to remove them from files
+  contextInfo.packs = GetPackReferences(context);
+
+  auto& contextItem = GetContext(context);
+  contextInfo.variables = contextItem.variables;
+  contextInfo.attributes = contextItem.targetAttributes;
+  contextInfo.pname = contextItem.deviceItem.pname;
+
+  if(contextItem.rteDevice) {
+    contextInfo.device = dc.FromRteDevice(contextItem.rteDevice, true);
+  } else {
+    contextInfo.device.id = contextItem.device;
+    contextInfo.success = false;
+    contextInfo.message = "No device is found";
+  }
+  if(contextItem.rteBoard) {
+    contextInfo.board = dc.FromRteBoard(contextItem.rteBoard, true);
+  }
+  return contextInfo;
+}
+
 RpcArgs::UsedItems RpcHandler::GetUsedItems(const string& context) {
   RpcArgs::UsedItems usedItems;
-  usedItems.success = true;
   RpcDataCollector dc(GetActiveTarget(context));
   dc.CollectUsedComponents(usedItems.components);
   // get all references, even if they are not selected , because it is useful for client to remove them from files
   usedItems.packs = GetPackReferences(context);
+  usedItems.success = true;
   return usedItems;
 }
 
@@ -382,6 +410,7 @@ PackReferenceVector RpcHandler::CollectPackReferences(const string& context) {
   auto contextItem = GetContext(context);
   for(const auto& packItem : contextItem.packRequirements) {
     const auto packId = RtePackage::ComposePackageID(packItem.pack.vendor, packItem.pack.name, packItem.pack.version);
+
     RpcArgs::PackReference packRef;
     packRef.pack = packItem.selectedBy;
     packRef.resolvedPack = packId;
@@ -472,6 +501,15 @@ RpcArgs::PacksInfo RpcHandler::GetPacksInfo(const string& context, const bool& a
 
   packsInfo.success = true;
   return packsInfo;
+}
+
+RpcArgs::VariablesResult RpcHandler::GetVariables(const string& context) {
+  RpcArgs::VariablesResult res;
+  res.success = false;
+  auto& contextItem = GetContext(context);
+  res.variables = contextItem.variables;
+  res.success = true;
+  return res;
 }
 
 RpcArgs::DeviceList RpcHandler::GetDeviceList(const string& context, const string& namePattern, const string& vendor)
