@@ -327,6 +327,8 @@ One can directly run the tests from command line.
 
 Users can generate coverage reports locally using a GNU tool [**lcov**](https://wiki.documentfoundation.org/Development/Lcov).
 
+CI publishes coverage to the repository's Qlty project. Reports are tagged separately for `buildmgr`, `packchk`, `packgen`, `projmgr`, and `svdconv`; Qlty combines these tags in the project-wide coverage view. Configure the `QLTY_COVERAGE_TOKEN` repository secret to enable uploads.
+
 ### Prerequisite
 
 Coverage reports can only be generated on **linux** platform.
