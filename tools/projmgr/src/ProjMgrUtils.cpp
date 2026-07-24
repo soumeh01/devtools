@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,6 +13,7 @@
 #include "CrossPlatform.h"
 #include "CrossPlatformUtils.h"
 
+#include <cctype>
 #include <regex>
 #include <sstream>
 
@@ -21,6 +22,64 @@ using namespace std;
 static constexpr const char* HIGHER_OR_EQUAL_OPERATOR = ">=";
 static constexpr const char* TILDE_OPERATOR = "~";
 static constexpr const char* CARET_OPERATOR = "^";
+
+// Dbgconf assignment names follow C-style identifier rules.
+static bool IsDbgconfVariableName(const string& value) {
+  if (value.empty() || (!isalpha(static_cast<unsigned char>(value[0])) && value[0] != '_')) {
+    return false;
+  }
+  return all_of(value.begin() + 1, value.end(), [](unsigned char c) { return isalnum(c) || c == '_'; });
+}
+
+// Remove surrounding whitespace without changing the assignment value content.
+static string Trim(const string& value) {
+  const auto first = find_if_not(value.begin(), value.end(), [](unsigned char c) { return isspace(c); });
+  const auto last = find_if_not(value.rbegin(), value.rend(), [](unsigned char c) { return isspace(c); }).base();
+  return first < last ? string(first, last) : string();
+}
+
+// Strip C and C++ comments while preserving line breaks that separate statements.
+static string StripCComments(const string& input) {
+  string output;
+  bool inLineComment = false;
+  size_t blockCommentDepth = 0;
+  size_t index = 0;
+  while (index < input.length()) {
+    const char current = input[index];
+    const char next = index + 1 < input.length() ? input[index + 1] : '\0';
+
+    if (inLineComment) {
+      if (current == '\n' || current == '\r') {
+        inLineComment = false;
+        output += current;
+      }
+      ++index;
+    } else if (blockCommentDepth > 0) {
+      if (current == '/' && next == '*') {
+        ++blockCommentDepth;
+        index += 2;
+      } else if (current == '*' && next == '/') {
+        --blockCommentDepth;
+        index += 2;
+      } else {
+        if (current == '\n' || current == '\r') {
+          output += current;
+        }
+        ++index;
+      }
+    } else if (current == '/' && next == '/') {
+      inLineComment = true;
+      index += 2;
+    } else if (current == '/' && next == '*') {
+      blockCommentDepth = 1;
+      index += 2;
+    } else {
+      output += current;
+      ++index;
+    }
+  }
+  return output;
+}
 
 RtePackage* ProjMgrUtils::ReadGpdscFile(const string& gpdsc, bool& valid) {
   fs::path path(gpdsc);
@@ -439,6 +498,38 @@ const string ProjMgrUtils::FormatPath(const string& original, const string& dire
   return path;
 }
 
+map<string, string> ProjMgrUtils::ParseDbgconfFile(const string& dbgconf) {
+  string content;
+  map<string, string> assignments;
+  if (!RteFsUtils::ReadFile(dbgconf, content)) {
+    return assignments;
+  }
+
+  const string contentWithoutComments = StripCComments(content);
+  // Split semicolon-separated statements, also accepting a final unterminated assignment.
+  size_t statementStart = 0;
+  size_t statementEnd = contentWithoutComments.find(';');
+  while (statementStart < contentWithoutComments.length()) {
+    const string statement = contentWithoutComments.substr(
+      statementStart,
+      statementEnd == string::npos ? string::npos : statementEnd - statementStart);
+    const size_t assignment = statement.find('=');
+    if (assignment != string::npos) {
+      const string key = Trim(statement.substr(0, assignment));
+      const string value = Trim(statement.substr(assignment + 1));
+      if (IsDbgconfVariableName(key)) {
+        assignments[key] = value;
+      }
+    }
+    if (statementEnd == string::npos) {
+      break;
+    }
+    statementStart = statementEnd + 1;
+    statementEnd = contentWithoutComments.find(';', statementStart);
+  }
+  return assignments;
+}
+
 bool ProjMgrUtils::ContainsIncompatiblePack(const std::list<RtePackage*>& packs, const std::string& requirement) {
   bool incompatible = false;
   for (const auto& p : packs) {
@@ -486,23 +577,23 @@ const string ProjMgrUtils::FileTypeFromExtension(const string& file) {
   return RteUtils::EMPTY_STRING;
 }
 
-const std::string ProjMgrUtils::NormalizeLineEndings(const std::string& in) {
-  string out = in;
-  size_t pos = 0;
-  while ((pos = out.find("\r\n", pos)) != std::string::npos) {
-    out.replace(pos++, 2, "\n");
-  }
-  pos = 0;
-  while ((pos = out.find("\r", pos)) != std::string::npos) {
-    out.replace(pos, 1, "\n");
-  }
-  return out;
-}
-
 const std::string ProjMgrUtils::GetWestBoard(const std::string& board) {
   string westBoard = RteUtils::StripSuffix(RteUtils::StripPrefix(board, "::"));
   std::transform(westBoard.begin(), westBoard.end(), westBoard.begin(),
     [](unsigned char c) { return std::tolower(c); });
   std::replace(westBoard.begin(), westBoard.end(), '-', '_');
   return westBoard;
+}
+
+void ProjMgrUtils::AdjustRelativePaths(vector<string>& vec, const string& ref, const string& outDir) {
+  static const regex pattern(R"((\.{1,2}/.*))");
+  for (string& value : vec) {
+    if (!value.empty()) {
+      smatch match;
+      if (regex_search(value, match, pattern)) {
+        const auto& replacement = RteFsUtils::RelativePath(ref + "/" + match.str(), outDir, true);
+        value.replace(match.position(), match.length(), replacement);
+      }
+    }
+  }
 }

@@ -6,20 +6,25 @@ cbuild-run:
   compiler: AC6
   board: Keil::RteTest-Test-board With.Memory:1.1.1
   board-pack: ARM::RteTest_DFP@0.2.0
+  board-pack-path: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0
   device: ARM::RteTest_ARMCM3
   device-pack: ARM::RteTest_DFP@0.2.0
+  device-pack-path: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0
   output:
     - file: run-debug/TestHW2/run-debug.axf
       info: generate by run-debug+TestHW2
       type: elf
+      project: run-debug
       load: symbols
     - file: run-debug/TestHW2/run-debug.hex
       info: generate by run-debug+TestHW2
       type: hex
+      project: run-debug
       load: image
     - file: run-debug/TestHW2/run-debug.bin
       info: generate by run-debug+TestHW2
       type: bin
+      project: run-debug
       load: none
     - file: ../../data/TestRunDebug/customLibrary.x
       type: lib
@@ -30,11 +35,13 @@ cbuild-run:
         access: rx
         start: 0x00000000
         size: 0x00040000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: IRAM1
         access: rwx
         start: 0x20000000
         size: 0x00020000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: RAM-External
         access: rwx
@@ -46,6 +53,13 @@ cbuild-run:
         start: 0x70000000
         size: 0x04000000
         from-pack: ARM::RteTest_DFP@0.2.0
+    processors:
+      - core: Cortex-M3
+        revision: r2p1
+        endian: configurable
+        fpu: none
+        mpu: present
+        max-clock: 10000000
   system-descriptions:
     - file: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0/Device/ARM/SVD/ARMCM3.svd
       type: svd
@@ -130,6 +144,15 @@ cbuild-run:
       size: 0x00040000
       ram-start: 0x20000000
       ram-size: 0x00020000
+  flash-info:
+    - name: Family Flash
+      start: 0x80000000
+      page-size: 0x00000100
+      blocks:
+        - count: 64
+          size: 0x00000100
+        - count: 128
+          size: 0x00000400
   debug-topology:
     debugports:
       - dpid: 0

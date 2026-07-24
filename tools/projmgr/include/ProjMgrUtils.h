@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -285,6 +285,21 @@ public:
   static const std::string FormatPath(const std::string& original, const std::string& directory, bool useAbsolutePaths = false);
 
   /**
+  * @brief parse variable assignments from a dbgconf file
+   * @param dbgconf path to dbgconf file
+   * @return map of variable names to assigned values
+  */
+  static std::map<std::string, std::string> ParseDbgconfFile(const std::string& dbgconf);
+
+  /**
+   * @brief adjust relative path fragments in a list of values
+   * @param vec list of strings that may contain relative paths
+   * @param ref reference path for formatting
+   * @param outDir output directory for path formatting
+  */
+  static void AdjustRelativePaths(std::vector<std::string>& vec, const std::string& ref, const std::string& outDir);
+
+  /**
    * @brief check if list contains incompatible version of pack requirement
    * @param list of packs
    * @param string pack requirement
@@ -313,13 +328,6 @@ public:
    * @return file type or empty string
   */
   static const std::string FileTypeFromExtension(const std::string& file);
-
-  /**
-   * @brief normalize line endings for consistent string comparison
-   * @param input string
-   * @return output normalized string
-  */
-  static const std::string NormalizeLineEndings(const std::string& in);
 
   /**
    * @brief convert board string to west board string

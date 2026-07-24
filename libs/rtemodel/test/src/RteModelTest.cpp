@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -23,7 +23,7 @@
 
 using namespace std;
 
-TEST(RteModelTest, PackRegistry) {
+TEST_F(RteModelTestConfig, PackRegistry) {
 
   // tests for pack registry
   RteKernelSlim rteKernel;  // here just to instantiate XMLTree parser
@@ -33,30 +33,31 @@ TEST(RteModelTest, PackRegistry) {
   RteModel testModel(PackageState::PS_AVAILABLE);
 
   RtePackage* pack = new RtePackage(&testModel);
+  EXPECT_FALSE(pack->Exists());
   pack->SetAttribute("name", "foo");
   pack->SetRootFileName("foo");
+  EXPECT_FALSE(pack->Exists());
   EXPECT_TRUE(packRegistry->AddPack(pack));
   EXPECT_FALSE(packRegistry->AddPack(pack)); // not second time
   EXPECT_EQ(packRegistry->GetPack("foo"), pack);
-  pack = new RtePackage(&testModel);
+  pack = new RtePackage(&testModel, PackageState::PS_EXPLICIT_PATH);
   pack->SetAttribute("name", "bar");
   pack->SetRootFileName("foo");
   EXPECT_TRUE(packRegistry->AddPack(pack, true));
   EXPECT_EQ(packRegistry->GetPack("foo"), pack);
   EXPECT_EQ(packRegistry->GetLoadedPacks().size(), 1);
 
-  EXPECT_TRUE(packRegistry->ErasePack("foo"));
+  EXPECT_TRUE(packRegistry->PurgePacks(false)); // deleted because not exists
   EXPECT_EQ(packRegistry->GetPack("foo"), nullptr);
-  EXPECT_FALSE(packRegistry->ErasePack("foo")); // already erased
+  EXPECT_FALSE(packRegistry->ErasePack("foo")); // already erased via Purge
   EXPECT_EQ(packRegistry->GetLoadedPacks().size(), 0);
-
 }
 
-TEST(RteModelTest, PackRegistryLoadPacks) {
+TEST_F(RteModelTestConfig, PackRegistryLoadPacks) {
 
   // tests for pack registry
   RteKernelSlim rteKernel;  // here just to instantiate XMLTree parser
-  rteKernel.SetCmsisPackRoot(RteModelTestConfig::CMSIS_PACK_ROOT);
+  rteKernel.SetCmsisPackRoot(packsDir);
 
   RtePackRegistry* packRegistry = rteKernel.GetPackRegistry();
   ASSERT_TRUE(packRegistry != nullptr);
@@ -65,24 +66,30 @@ TEST(RteModelTest, PackRegistryLoadPacks) {
   list<string> files;
   rteKernel.GetEffectivePdscFiles(files, false);
   EXPECT_FALSE(files.empty());
-  list<RtePackage*> packs;
+  const string& firstFile = *files.begin();
+  list<RtePackage*> packs, packs1;
   EXPECT_TRUE(rteKernel.LoadPacks(files, packs, &testModel));
   EXPECT_FALSE(packs.empty());
   EXPECT_EQ(packs.size(), files.size());
   EXPECT_EQ(packRegistry->GetLoadedPacks().size(), packs.size());
- // to check if packs are the same or reloaded, modify the first pack
+  // no reload by default
+  EXPECT_TRUE(rteKernel.LoadPacks(files, packs1, &testModel));
+  EXPECT_EQ(packs, packs1); // no new packs loaded
+  packs1.clear();
+
+  // to check if packs are the same or reloaded, modify the first pack
   ASSERT_NE(packs.begin(), packs.end());
   RtePackage* pack = *(packs.begin());
   ASSERT_TRUE(pack != nullptr);
+  EXPECT_TRUE(pack->Exists());
   RteItem* dummyChild = new RteItem("dummy_child", pack);
   pack->AddItem(dummyChild);
   // no reload of the same files by default
-  list<RtePackage*> packs1;
   EXPECT_TRUE(rteKernel.LoadPacks(files, packs1, &testModel));
   EXPECT_EQ(packs1.size(), files.size());
   EXPECT_EQ(packs, packs1); // no new packs loaded
   ASSERT_NE(packs1.begin(), packs1.end());
-  auto pack1 = *packs1.begin();
+  RtePackage* pack1 = *(packs1.begin());
   ASSERT_TRUE(pack1 != nullptr);
 
   EXPECT_EQ(pack1->GetFirstChild("dummy_child"), dummyChild);
@@ -94,8 +101,6 @@ TEST(RteModelTest, PackRegistryLoadPacks) {
   EXPECT_EQ(pack1->GetFirstChild("dummy_child"), nullptr); // pack got loaded again => no added child
 
   EXPECT_EQ(packRegistry->GetLoadedPacks().size(), files.size());
-  ASSERT_NE(files.begin(), files.end());
-  const string& firstFile = *files.begin();
   pack = packRegistry->GetPack(firstFile);
   ASSERT_TRUE(pack != nullptr);
   EXPECT_EQ(pack->GetPackageState(), PackageState::PS_INSTALLED);
@@ -104,8 +109,32 @@ TEST(RteModelTest, PackRegistryLoadPacks) {
   EXPECT_FALSE(packRegistry->ErasePack(firstFile)); // already not in collection
   packs.clear();
   EXPECT_TRUE(rteKernel.LoadPacks(files, packs, &testModel));
-  EXPECT_EQ(packs.size(), packs1.size()); //only one pack is loaded
+  EXPECT_EQ(packs.size(), packs1.size()); // the pack is reloaded()
   packs.clear();
+  packs1.clear();
+
+  EXPECT_TRUE(rteKernel.LoadPacks(files, packs, &testModel));
+  // modify a file time stamp reloading
+  string buf;
+  pack = *(packs.begin());
+  dummyChild = new RteItem("dummy_child", pack);
+  pack->AddItem(dummyChild);
+  auto t = pack->GetModificationTime() - std::chrono::seconds(5);
+  EXPECT_TRUE(pack->SetModificationTime(t));
+  EXPECT_FALSE(pack->SetModificationTime(t)); // to check return value
+
+  EXPECT_TRUE(rteKernel.LoadPacks(files, packs1, &testModel));
+  pack1 = *(packs1.begin());
+  auto t1 = pack1->GetModificationTime();
+  EXPECT_NE(t, t1);
+  EXPECT_EQ(pack1->GetFirstChild("dummy_child"), nullptr); // pack got loaded again => no added child
+
+  // test RteGlobalModel::PurgeModel
+  pack1->SetPackageState(PackageState::PS_EXPLICIT_PATH); // simulate pack is explicit
+  auto globalModel = rteKernel.GetGlobalModel();
+
+  EXPECT_FALSE(globalModel->PurgeModel(false));
+  EXPECT_TRUE(globalModel->PurgeModel(true));
 }
 
 TEST(RteModelTest, LoadPacks) {
@@ -121,7 +150,7 @@ TEST(RteModelTest, LoadPacks) {
 
   list<string> files;
   rteKernel.GetEffectivePdscFiles(files, false);
-  EXPECT_EQ(files.size(), 11);
+  EXPECT_EQ(files.size(), 12);
 
   RteModel* rteModel = rteKernel.GetGlobalModel();
   ASSERT_NE(rteModel, nullptr);
@@ -157,6 +186,29 @@ TEST(RteModelTest, LoadPacks) {
   // test recommended memory attributes: name and access
   summary = da->GetSummaryString();
   EXPECT_EQ(summary, "ARM Cortex-M4, 10 MHz, 128 KiB RAM, 256 KiB ROM");
+  auto di = da->GetDeviceItem();
+  EXPECT_EQ(di->GetProcessorCount(), 1);
+  EXPECT_TRUE(di->GetEffectiveProperties("foo").empty());
+  const auto& m4Properties = di->GetEffectiveProperties("");
+  EXPECT_FALSE(m4Properties.empty());
+
+  da = rteModel->GetDeviceAggregate("RteTest_ARMCM0_Dual", "ARM:82");
+  ASSERT_NE(da, nullptr);
+  // test recommended memory attributes: name and access
+  summary = da->GetSummaryString();
+  EXPECT_EQ(summary, "ARM Cortex-M0, 10 MHz, ARM Cortex-M0, 10 MHz, 256 KiB RAM, 768 KiB ROM");
+  di = da->GetDeviceItem();
+  ASSERT_NE(di, nullptr);
+  EXPECT_EQ(di->GetProcessorCount(), 2);
+  const auto& commonProperties = di->GetEffectiveProperties("");
+  const auto& core0Properties = di->GetEffectiveProperties("cm0_core0");
+  const auto& core1Properties = di->GetEffectiveProperties("cm0_core1");
+
+  EXPECT_TRUE(RteModelTestConfig::IsSubset(commonProperties, core0Properties));
+  EXPECT_TRUE(RteModelTestConfig::IsSubset(commonProperties, core1Properties));
+  EXPECT_FALSE(RteModelTestConfig::IsSubset(core0Properties, commonProperties));
+  EXPECT_FALSE(RteModelTestConfig::IsSubset(core1Properties, commonProperties));
+  EXPECT_FALSE(RteModelTestConfig::IsSubset(core0Properties, core1Properties));
 
   RteBoard* board = rteModel->FindBoard("RteTest board listing (Rev.C)");
   ASSERT_NE(board, nullptr);
@@ -692,10 +744,11 @@ TEST_F(RteModelPrjTest, LoadCprjConfigVer) {
 
   const string deviceDir = rteDir + "Device/RteTest_ARMCM3/";
   EXPECT_TRUE(RteFsUtils::Exists(deviceDir + "ARMCM3_ac6.sct"));
-  EXPECT_TRUE(RteFsUtils::Exists(deviceDir + "ARMCM3_ac6.sct.base@1.0.0"));
+  // content of update file is equal to the base file, rebase the version to 1.2.0
+  EXPECT_TRUE(RteFsUtils::Exists(deviceDir + "ARMCM3_ac6.sct.base@1.2.0"));
   // check if file version is taken from  base file (project contains "5.5.5")
   RteFileInstance* fi = loadedCprjProject->GetFileInstance("CONFIG_FOLDER/Device/RteTest_ARMCM3/ARMCM3_ac6.sct");
-  EXPECT_TRUE(fi && fi->GetVersionString() == "1.0.0");
+  EXPECT_TRUE(fi && fi->GetVersionString() == "1.2.0");
 
   EXPECT_TRUE(RteFsUtils::Exists(deviceDir + "startup_ARMCM3.c.base@2.0.3"));
   EXPECT_TRUE(RteFsUtils::Exists(deviceDir + "system_ARMCM3.c.base@1.0.1"));

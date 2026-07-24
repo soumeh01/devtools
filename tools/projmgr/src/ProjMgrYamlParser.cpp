@@ -106,6 +106,7 @@ bool ProjMgrYamlParser::ParseCsolution(const string& input,
     csolution.enableCdefault = solutionNode[YAML_CDEFAULT].IsDefined();
     ParseGenerators(solutionNode, csolution.path, csolution.generators);
     ParseExecutes(solutionNode, csolution.path, csolution.executes);
+    ParseMlops(solutionNode, csolution.path, csolution.mlops);
 
   } catch (YAML::Exception& e) {
    ProjMgrLogger::Get().Error(e.msg, "", input, e.mark.line + 1, e.mark.column + 1);
@@ -401,6 +402,14 @@ void ProjMgrYamlParser::ParseInt(const YAML::Node& parent, const string& key, in
   }
 }
 
+void ProjMgrYamlParser::ParseMapOfStrings(const YAML::Node& parent, const string& key, map<string, string>& value) {
+  if (parent[key].IsDefined() && parent[key].IsMap()) {
+    for (const auto& item : parent[key]) {
+      value[item.first.as<string>()] = YAML::IsNullString(item.second.as<string>()) ? "" : item.second.as<string>();
+    }
+  }
+}
+
 void ProjMgrYamlParser::ParseVector(const YAML::Node& parent, const string& key, vector<string>& value) {
   if (parent[key].IsDefined() && parent[key].IsSequence()) {
     value = parent[key].as<vector<string>>();
@@ -448,20 +457,20 @@ bool ProjMgrYamlParser::ParseDefine(const YAML::Node& defineNode, vector<string>
     for (const auto& item : defineNode) {
       // accept map elements <string, string> or a string
       if (item.IsDefined()) {
-        if (item.IsMap()) {
+            if (item.IsMap()) {
           const auto& elements = item.as<map<string, string>>();
           for (auto element : elements) {
             if (YAML::IsNullString(element.second)) {
               element.second = "";
             }
-            success = ValidateDefineStr(element.second);
+            success &= ValidateDefineStr(element.second);
             if (success) {
               define.push_back(element.first + "=" + element.second);
             }
           }
         }
         else {
-          success = ValidateDefineStr(item.as<string>());
+          success &= ValidateDefineStr(item.as<string>());
           if (success) {
             define.push_back(item.as<string>());
           }
@@ -537,6 +546,7 @@ bool ProjMgrYamlParser::ParseComponents(const YAML::Node& parent, const string& 
       ParseString(componentEntry, YAML_COMPONENT, componentItem.component);
       ParseString(componentEntry, YAML_CONDITION, componentItem.condition);
       ParseString(componentEntry, YAML_FROM_PACK, componentItem.fromPack);
+      ParseString(componentEntry, YAML_BUILDSCOPE, componentItem.buildScope);
       if (!ParseBuildType(componentEntry, file, componentItem.build)) {
         return false;
       }
@@ -615,6 +625,19 @@ void ProjMgrYamlParser::ParseTelnet(const YAML::Node& parent, const std::string&
   }
 }
 
+void ProjMgrYamlParser::ParseSystemView(const YAML::Node& parent, const std::string& file, SystemViewItem& systemView) {
+  if (parent[YAML_SYSTEMVIEW].IsDefined()) {
+    const YAML::Node& systemViewNode = parent[YAML_SYSTEMVIEW];
+    ParseString(systemViewNode, YAML_FILE, systemView.file);
+
+    bool autoStart = false, autoStop = false;
+    ParseBoolean(systemViewNode, YAML_AUTO_START, autoStart, true);
+    ParseBoolean(systemViewNode, YAML_AUTO_STOP, autoStop, true);
+    systemView.autoStart = autoStart;
+    systemView.autoStop = autoStop;
+  }
+}
+
 void ProjMgrYamlParser::ParseDebugger(const YAML::Node& parent, const string& file, DebuggerItem& debugger) {
   if (parent[YAML_DEBUGGER].IsDefined()) {
     const YAML::Node& debuggerNode = parent[YAML_DEBUGGER];
@@ -622,9 +645,11 @@ void ProjMgrYamlParser::ParseDebugger(const YAML::Node& parent, const string& fi
     ParseString(debuggerNode, YAML_PROTOCOL, debugger.protocol);
     ParseNumber(debuggerNode, file, YAML_CLOCK, debugger.clock);
     ParsePortablePath(debuggerNode, file, YAML_DBGCONF, debugger.dbgconf);
+    ParseMapOfStrings(debuggerNode, YAML_DEVICE_SETTINGS, debugger.deviceSettings);
     ParseString(debuggerNode, YAML_START_PNAME, debugger.startPname);
     ParseTelnet(debuggerNode, file, debugger.telnet);
-    ParseCustom(debuggerNode, { YAML_NAME, YAML_PROTOCOL, YAML_CLOCK, YAML_DBGCONF, YAML_START_PNAME, YAML_TELNET }, debugger.custom);
+	ParseSystemView(debuggerNode, file, debugger.systemView);
+    ParseCustom(debuggerNode, { YAML_NAME, YAML_PROTOCOL, YAML_CLOCK, YAML_DBGCONF, YAML_DEVICE_SETTINGS, YAML_START_PNAME, YAML_TELNET, YAML_SYSTEMVIEW }, debugger.custom);
   }
 }
 
@@ -651,7 +676,7 @@ void ProjMgrYamlParser::ParseDebugDefaults(const YAML::Node& parent, const strin
     }
     ParseString(defaultsNode, YAML_PROTOCOL, defaults.protocol);
     ParseNumber(defaultsNode, file, YAML_CLOCK, defaults.clock);
-    ParseCustom(defaultsNode, { YAML_GDBSERVER, YAML_TELNET, YAML_PROTOCOL, YAML_CLOCK }, defaults.custom);
+    ParseCustom(defaultsNode, { YAML_GDBSERVER, YAML_TELNET, YAML_SYSTEMVIEW, YAML_PROTOCOL, YAML_CLOCK }, defaults.custom);
   }
 }
 
@@ -1084,6 +1109,45 @@ bool ProjMgrYamlParser::ParseTargetType(const YAML::Node& parent, const string& 
   return ParseBuildType(parent, file, targetType.build);
 }
 
+void ProjMgrYamlParser::ParseMlops(const YAML::Node& parent, const string& file, MlopsItem& mlops) {
+  if (parent[YAML_MLOPS].IsDefined()) {
+    const YAML::Node& mlopsNode = parent[YAML_MLOPS];
+    mlops.enabled = true;
+    ParseString(mlopsNode, YAML_DESCRIPTION, mlops.description);
+    if (mlopsNode[YAML_NPU].IsDefined()) {
+      const YAML::Node& npuNode = mlopsNode[YAML_NPU];
+      ParseString(npuNode, YAML_TYPE, mlops.npu.type);
+      ParseNumber(npuNode, file, YAML_MACS, mlops.npu.macs);
+    }
+    if (mlopsNode[YAML_VELA].IsDefined()) {
+      const YAML::Node& velaNode = mlopsNode[YAML_VELA];
+      ParsePortablePath(velaNode, file, YAML_INI, mlops.vela.ini);
+      ParseString(velaNode, YAML_SYSTEM, mlops.vela.system);
+      ParseString(velaNode, YAML_MEMORY, mlops.vela.memory);
+      ParseString(velaNode, YAML_MISC, mlops.vela.misc);
+    }
+    if (mlopsNode[YAML_MODEL].IsDefined()) {
+      const YAML::Node& modelNode = mlopsNode[YAML_MODEL];
+      ParsePortablePath(modelNode, file, YAML_CLAYER, mlops.model.clayer);
+      ParseString(modelNode, YAML_NAME, mlops.model.name);
+    }
+    if (mlopsNode[YAML_HARDWARE].IsDefined()) {
+      const YAML::Node& hardwareNode = mlopsNode[YAML_HARDWARE];
+      string hardwareTarget;
+      ParseString(hardwareNode, YAML_TARGET, hardwareTarget);
+      mlops.hardware.targetType = RteUtils::GetPrefix(hardwareTarget, '@');
+      mlops.hardware.targetSet  = RteUtils::GetSuffix(hardwareTarget, '@');
+    }
+    if (mlopsNode[YAML_SIMULATOR].IsDefined()) {
+      const YAML::Node& simulatorNode = mlopsNode[YAML_SIMULATOR];
+      string simulatorTarget;
+      ParseString(simulatorNode, YAML_TARGET, simulatorTarget);
+      mlops.simulator.targetType = RteUtils::GetPrefix(simulatorTarget, '@');
+      mlops.simulator.targetSet  = RteUtils::GetSuffix(simulatorTarget, '@');
+    }
+  }
+}
+
 void ProjMgrYamlParser::ParseTargetSet(const YAML::Node& parent, const string& file, std::vector<TargetSetItem>& targetSets) {
   if (parent[YAML_TARGET_SET].IsDefined()) {
     const YAML::Node& targetSetNode = parent[YAML_TARGET_SET];
@@ -1180,6 +1244,7 @@ const set<string> solutionKeys = {
   YAML_CDEFAULT,
   YAML_GENERATORS,
   YAML_EXECUTES,
+  YAML_MLOPS,
 };
 
 const set<string> projectsKeys = {
@@ -1395,6 +1460,7 @@ const set<string> componentsKeys = {
   YAML_COMPONENT,
   YAML_CONDITION,
   YAML_FROM_PACK,
+  YAML_BUILDSCOPE,
   YAML_FORCONTEXT,
   YAML_NOTFORCONTEXT,
   YAML_COMPILER,

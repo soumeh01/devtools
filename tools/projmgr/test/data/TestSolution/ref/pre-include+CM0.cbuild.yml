@@ -47,6 +47,10 @@ build:
   output:
     - type: elf
       file: pre-include.axf
+    - type: comp-db
+      file: compile_commands.json
+    - type: comp-db
+      file: compile_macros.h
   components:
     - component: ARM::Device:Startup&RteTest Startup@2.0.3
       condition: ARMCM0 RteTest

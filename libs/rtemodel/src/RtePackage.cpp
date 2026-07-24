@@ -6,7 +6,7 @@
 */
 /******************************************************************************/
 /*
- * Copyright (c) 2020-2021 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -1139,7 +1139,7 @@ bool RtePackageFilter::AreAllExcluded() const
 
 bool RtePackageFilter::IsUseAllPacks() const
 {
-  return m_bUseAllPacks && m_selectedPacks.empty() && m_latestPacks.empty();
+  return m_bUseAllPacks;
 }
 
 bool RtePackageFilter::IsPackageSelected(const string& packId) const
@@ -1170,14 +1170,17 @@ bool RtePackageFilter::IsPackageFiltered(RtePackage* pack) const
 
 bool RtePackageFilter::IsPackageFiltered(const string& packId) const
 {
+  if(IsPackageSelected(packId)) { // pack is explicitly selected => filtered
+    return true;
+  }
   if (!IsUseAllPacks()) {
-    if (IsPackageSelected(packId))
-      return true;
-
     string commonId = RtePackage::CommonIdFromId(packId);
-    if (m_latestPacks.find(commonId) == m_latestPacks.end())
+    if(IsPackageSelected(commonId) && contains_key(m_latestInstalledPacks, packId)) {
+      return true; // pack is explicitly selected as a common ID
+    }
+    if(!contains_key(m_latestPacks, commonId)) {
       return false;
-
+    }
     for (auto& it : m_selectedPacks) {
       string id = RtePackage::CommonIdFromId(it);
       if (id == commonId) {
@@ -1185,8 +1188,9 @@ bool RtePackageFilter::IsPackageFiltered(const string& packId) const
       }
     }
   }
-  if (m_latestInstalledPacks.find(packId) != m_latestInstalledPacks.end())
+  if(contains_key(m_latestInstalledPacks, packId)) {
     return true;
+  }
   return false;
 }
 
@@ -1479,6 +1483,7 @@ RtePackRegistry::~RtePackRegistry()
 
 void RtePackRegistry::Clear()
 {
+  ClearPdscMap();
   for(auto [_, p] : m_loadedPacks) {
     delete p;
   }
@@ -1499,7 +1504,7 @@ bool RtePackRegistry::AddPack(RtePackage* pack, bool bReplace)
   auto& fileName = pack->GetPackageFileName();
   auto existing = GetPack(fileName);
   if(existing) {
-    if(bReplace) {
+    if(bReplace || (pack->GetModificationTime() > existing->GetModificationTime())) {
       delete existing;
     } else {
       return false;
@@ -1518,6 +1523,25 @@ bool RtePackRegistry::ErasePack(const std::string& pdscFile)
     return true;
   }
   return false;
+}
+
+bool RtePackRegistry::PurgePacks(bool purgeExplicit) {
+  ClearPdscMap(); // clear because packs can be added or removed after this call
+
+  set<string> toErase;
+  // collect packs that no longer exist
+  for(auto& [pdscFile, pack] : m_loadedPacks) {
+    if(!pack || !pack->Exists() || (purgeExplicit && pack->GetPackageState() == PackageState::PS_EXPLICIT_PATH )) {
+      toErase.insert(pdscFile);
+    }
+  }
+  if(toErase.empty()) {
+    return false;
+  }
+  for(auto& pdscFile : toErase) {
+    ErasePack(pdscFile);
+  }
+  return true;
 }
 
 

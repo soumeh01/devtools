@@ -41,6 +41,10 @@ build:
   output:
     - type: elf
       file: linker.axf
+    - type: comp-db
+      file: compile_commands.json
+    - type: comp-db
+      file: compile_macros.h
   components:
     - component: ARM::Board:Test:Rev1@1.1.1
       condition: BoardTest1

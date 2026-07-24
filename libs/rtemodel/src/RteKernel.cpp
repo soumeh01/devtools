@@ -297,7 +297,7 @@ RtePackage* RteKernel::LoadPack(const string& pdscFile, PackageState packState) 
   }
   RtePackRegistry* packRegistry = GetPackRegistry();
   RtePackage* pack = packRegistry->GetPack(pdscFile);
-  if(pack) {
+  if(pack && !pack->IsFileTimeModified()) {
     return pack;
   }
   const string ext = RteUtils::ExtractFileExtension(pdscFile, true);
@@ -334,10 +334,11 @@ bool RteKernel::LoadPacks(const std::list<std::string>& pdscFiles, std::list<Rte
     auto rteItemBuilder = CreateUniqueRteItemBuilder(model, model->GetPackageState());
     xmlTree->SetXmlItemBuilder(rteItemBuilder.get());
     RtePackage* pack = packRegistry->GetPack(pdscFile);
-    if(bReplace) {
+    if(bReplace || !pack || pack->IsFileTimeModified()) {
       packRegistry->ErasePack(pdscFile);
-    } else if(pack) {
+    } else {
       packs.push_back(pack);
+      pack->Reparent(model, false);
       continue;
     }
     bool result = xmlTree->AddFileName(pdscFile, true);
@@ -463,29 +464,24 @@ bool RteKernel::GetEffectivePdscFiles(std::list<std::string>& pdscFiles, bool la
 
 bool RteKernel::LoadAndInsertPacks(std::list<RtePackage*>& packs, std::list<std::string>& pdscFiles) {
   RteGlobalModel* globalModel = GetGlobalModel();
-  if (!globalModel) {
+  if(!globalModel) {
     return false;
   }
   std::list<RtePackage*> newPacks;
   pdscFiles.unique();
-  for (const auto& pdscFile : pdscFiles) {
+  for(const auto& pdscFile : pdscFiles) {
     PackageState state = pdscFile.find(GetCmsisPackRoot()) == 0 ? PS_INSTALLED : PS_EXPLICIT_PATH;
     RtePackage* pack = LoadPack(pdscFile, state);
-    if (!pack) {
+    if(!pack) {
       return false;
     }
-    // pack with explicit path must override installed pack
-    auto loadedPack = RtePackage::GetPackFromList(pack->GetID(), packs);
-    if(!loadedPack || (loadedPack->GetPackageState() == PS_INSTALLED && pack->GetPackageState() == PS_EXPLICIT_PATH)) {
-      newPacks.push_back(pack);
-    }
+    newPacks.push_back(pack);
   }
-
   globalModel->InsertPacks(newPacks);
 
   // Track only packs that were actually inserted into the model
   packs.clear();
-  for (const auto& [_, pack] : globalModel->GetPackages()) {
+  for(const auto& [_, pack] : globalModel->GetPackages()) {
     packs.push_back(pack);
   }
   return true;
@@ -608,9 +604,17 @@ bool RteKernel::GetLocalPdscFiles(const XmlItem& attr, std::map<std::string, std
 
 XMLTreeElement* RteKernel::ParseLocalRepositoryIdx() const
 {
-  // Parse local repository index file
-  const string indexPath = GetCmsisPackRoot() + "/.Local/local_repository.pidx";
+  return ParseRepositoryIdx(GetCmsisPackRoot() + "/.Local/local_repository.pidx");
+}
 
+XMLTreeElement* RteKernel::ParseWebRepositoryIdx() const
+{
+  return ParseRepositoryIdx(GetCmsisPackRoot() + "/.Web/index.pidx");
+}
+
+XMLTreeElement* RteKernel::ParseRepositoryIdx(const string& indexPath) const
+{
+  // Parse local repository index file
   if (!RteFsUtils::Exists(indexPath)) {
     return nullptr;
   }
@@ -630,6 +634,49 @@ XMLTreeElement* RteKernel::ParseLocalRepositoryIdx() const
   return pIndexChild;
 }
 
+bool RteKernel::ReadPackLatestVerAndPath(map<string, pair<string, string>>& latestPacks) const {
+  // read latest public pack versions from /.Web/index.pidx and the corresponding latest Web PDSC file paths
+  unique_ptr<XMLTreeElement> webPIndexChild(ParseWebRepositoryIdx());
+  if (webPIndexChild) {
+    for (auto& child : webPIndexChild->GetChildren()) {
+      if (!child || child->GetTag() != "pdsc") {
+        continue;
+      }
+      const string& vendor = child->GetAttribute("vendor");
+      const string& name = child->GetAttribute("name");
+      const string& version = child->GetAttribute("version");
+      if (vendor.empty() || name.empty() || version.empty()) {
+        continue;
+      }
+      const string packId = vendor + "::" + name;
+      const string pdscFile = GetCmsisPackRoot() + "/.Web/" + vendor + "." + name + ".pdsc";
+      latestPacks[packId] = { version, RteFsUtils::Exists(pdscFile) ? pdscFile : string() };
+    }
+  }
+  // read effective PDSC files (installed + local). Override the current entry if the local version is newer than the web version
+  XmlItem attributes;
+  map<string, string, RtePackageComparator> effectivePdscMap;
+  if (GetEffectivePdscFilesAsMap(effectivePdscMap, true)) {
+    for (const auto& [_, localPdscFile] : effectivePdscMap) {
+      RtePackage* pack = LoadPack(localPdscFile);
+      if (!pack) {
+        continue;
+      }
+      const string& vendor = pack->GetVendorString();
+      const string& name = pack->GetName();
+      const string& version = pack->GetVersionString();
+      if (vendor.empty() || name.empty() || version.empty()) {
+        continue;
+      }
+      const string packId = vendor + "::" + name;
+      auto it = latestPacks.find(packId);
+      if (it == latestPacks.end() || VersionCmp::Compare(it->second.first, version) < 0) {
+        latestPacks[packId] = { version, localPdscFile };
+      }
+    }
+  }
+  return !latestPacks.empty();
+}
 
 unique_ptr<XMLTree> RteKernel::CreateUniqueXmlTree(IXmlItemBuilder* itemBuilder, const std::string& ext) const
 {

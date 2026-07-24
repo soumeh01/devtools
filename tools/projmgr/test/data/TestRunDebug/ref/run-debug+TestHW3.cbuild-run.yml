@@ -6,25 +6,30 @@ cbuild-run:
   compiler: AC6
   device: ARM::RteTest_ARMCM0_Dual
   device-pack: ARM::RteTest_DFP@0.2.0
+  device-pack-path: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0
   output:
     - file: core0/TestHW3/core0.axf
       info: generate by core0+TestHW3
       type: elf
+      project: core0
       load: none
       pname: cm0_core0
     - file: core1/TestHW3/core1.axf
       info: generate by core1+TestHW3
       type: elf
+      project: core1
       load: symbols
       pname: cm0_core1
     - file: core1/TestHW3/core1.hex
       info: generate by core1+TestHW3
       type: hex
+      project: core1
       load: image
       pname: cm0_core1
     - file: core1/TestHW3/core1.bin
       info: generate by core1+TestHW3
       type: bin
+      project: core1
       load: none
       pname: cm0_core1
   system-resources:
@@ -34,37 +39,74 @@ cbuild-run:
         start: 0x00000000
         size: 0x00080000
         pname: cm0_core0
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: SRAM_DUAL
         access: rwx
         start: 0x80000000
         size: 0x00020000
         pname: cm0_core1
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: IROM1
         access: rx
         start: 0x00000000
         size: 0x00040000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: IRAM1
         access: rwx
         start: 0x20000000
         size: 0x00020000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
+    processors:
+      - core: Cortex-M0
+        revision: r0p0
+        pname: cm0_core0
+        endian: configurable
+        fpu: none
+        mpu: none
+        dsp: none
+        trustzone: none
+        mve: fp
+        pacbti: none
+        max-clock: 10000000
+        cdecp: 0x12
+      - core: Cortex-M0
+        revision: r0p0
+        pname: cm0_core1
+        endian: configurable
+        fpu: dp
+        mpu: none
+        dsp: present
+        trustzone: present
+        mve: int
+        pacbti: present
+        max-clock: 10000000
+        punits: 1
+        cdecp: 0x34
   system-descriptions:
     - file: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0/Device/ARM/SVD/ARMCM0.svd
       type: svd
+    - file: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0/Components/RteTest.scvd
+      type: scvd
+      pname: cm0_core0
   debugger:
     name: CMSIS-DAP@pyOCD
     protocol: swd
     clock: 10000000
-    dbgconf: ../../data/TestRunDebug/.cmsis/run-debug+TestHW3.dbgconf
     start-pname: cm0_core1
     gdbserver:
       - port: 3333
         pname: cm0_core1
       - port: 3334
         pname: cm0_core0
+    device-settings:
+      ReleaseM0OnConnect: 1
+      ReleaseM0SubOnConnect: 1
+      RoutingTPIU: 0x00000000
+      VecResetWithPeriph: 1
   debug-vars:
     vars: |
       __var DbgMCU_CR      = 0x00000007;   // DBGMCU_CR: DBG_SLEEP, DBG_STOP, DBG_STANDBY
@@ -143,6 +185,27 @@ cbuild-run:
       size: 0x00040000
       ram-start: 0x20000000
       ram-size: 0x00020000
+  flash-info:
+    - name: Internal Flash 16KB
+      start: 0x0000F000
+      page-size: 0x00000040
+      blocks:
+        - count: 64
+          size: 0x00000100
+          arg: 0
+      blank-val: 0x0000000000000000
+      fill-val: 0xCCCCCCCCCCCCCCCC
+      ptime: 100000
+      etime: 1000000
+      pname: cm0_core1
+    - name: Family Flash
+      start: 0x80000000
+      page-size: 0x00000100
+      blocks:
+        - count: 64
+          size: 0x00000100
+        - count: 128
+          size: 0x00000400
   debug-topology:
     debugports:
       - dpid: 0

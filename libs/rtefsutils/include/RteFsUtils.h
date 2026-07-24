@@ -8,7 +8,7 @@
 */
 /******************************************************************************/
 /*
- * Copyright (c) 2020-2024 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -84,6 +84,15 @@ public:
    * @return true if copying file is processed
   */
   static bool CopyMergeFile(const std::string& src, const std::string& dst, int nInstance, bool backup);
+
+  /**
+   * @brief compare files content with normalized line endings
+   * @param fileName1 name of first file to be compared
+   * @param fileName2 name of second file to be compared
+   * @return true if files are equal
+  */
+  static bool CmpFiles(const std::string& fileName1, const std::string& fileName2);
+
   /**
    * @brief compare file content with given string 'buffer'
    * @param fileName name of file to be compared
@@ -409,6 +418,21 @@ public:
    * @return true if file is found successfully, false otherwise
   */
   static bool FindFileWithPattern(const std::string& searchPath, const std::string& pattern, std::string& file);
+
+    /**
+   * @brief returns file/dir modification time
+   * @param path absolute file/directory path
+   * @return fs::file_time_type
+  */
+  static fs::file_time_type GetModificationTime(const std::string& path);
+
+
+  /**
+   * @brief converts time to string
+   * @param timeStamp fs::file_time_type to convert
+   * @return string representing time
+  */
+  static std::string FileTimeToString(const fs::file_time_type& timeStamp);
 };
 
 #endif // RteFsUtils_H

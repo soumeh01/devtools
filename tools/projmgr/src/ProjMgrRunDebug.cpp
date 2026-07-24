@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2024-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -61,14 +61,15 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
   vector<pair<const RteItem*, vector<string>>> debugvars;
   // debug sequences
   vector<pair<const RteItem*, vector<string>>> debugSequences;
+  // flash info
+  vector<pair<const RteItem*, vector<string>>> flashInfo;
 
   // all processors
   const auto& pnames = context0->rteDevice->GetProcessors();
 
   // device collections
-  for (const auto& [pname, _] : pnames) {
+  for (const auto& [pname, processor] : pnames) {
     if (context0->devicePack) {
-      m_runDebug.devicePack = context0->devicePack->GetPackageID(true);
       const auto& deviceAlgorithms = context0->rteDevice->GetEffectiveProperties("algorithm", pname);
       for (const auto& deviceAlgorithm : deviceAlgorithms) {
         PushBackUniquely(algorithms, deviceAlgorithm, pname);
@@ -89,7 +90,44 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
       for (const auto& deviceDebugSequence : deviceDebugSequences) {
         PushBackUniquely(debugSequences, deviceDebugSequence, pname);
       }
+      const auto& deviceFlashInfos = context0->rteDevice->GetEffectiveProperties("flashinfo", pname);
+      for (const auto& deviceFlashInfo : deviceFlashInfos) {
+        PushBackUniquely(flashInfo, deviceFlashInfo, pname);
+      }
     }
+
+    // processor capabilities: core, revision and max-clock are mandatory
+    ProcessorCapabilitiesType item;
+    item.core = processor->GetAttribute(RteConstants::RTE_DCORE);
+    item.revision = processor->GetAttribute(RteConstants::RTE_DCORE_VERSION);
+    item.maxClock = processor->GetAttributeAsUnsigned(RteConstants::RTE_DCLOCK);
+    item.pname = pname;
+    if (processor->HasAttribute("Punits")) {
+      item.punits = processor->GetAttributeAsUnsigned("Punits");
+    }
+    if (processor->HasAttribute("Dcdecp")) {
+      item.cdecp = processor->GetAttributeAsUnsigned("Dcdecp");
+    }
+    // Get processor attributes
+    const map<const string, string&> attrMap = {
+      { RteConstants::RTE_DENDIAN , item.endian    },
+      { RteConstants::RTE_DFPU    , item.fpu       },
+      { RteConstants::RTE_DMPU    , item.mpu       },
+      { RteConstants::RTE_DDSP    , item.dsp       },
+      { RteConstants::RTE_DTZ     , item.trustzone },
+      { RteConstants::RTE_DMVE    , item.mve       },
+      { RteConstants::RTE_DPACBTI , item.pacbti    },
+    };
+    for (auto& [key, value] : attrMap) {
+      if (processor->HasAttribute(key)) {
+        value = RteConstants::GetDeviceAttribute(key, processor->GetAttribute(key), RteConstants::ProcessorCapabilities);
+      }
+    }
+    m_runDebug.systemResources.processors.push_back(item);
+  }
+  if (context0->devicePack) {
+    m_runDebug.devicePack = context0->devicePack->GetPackageID(true);
+    m_runDebug.devicePackPath = context0->devicePack->GetAbsolutePackagePath();
   }
 
   // default ramstart/size: use the first memory with default=1 and rwx attribute
@@ -121,6 +159,7 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
   // board collections
   if (context0->boardPack) {
     m_runDebug.boardPack = context0->boardPack->GetPackageID(true);
+    m_runDebug.boardPackPath = context0->boardPack->GetAbsolutePackagePath();
     Collection<RteItem*> boardAlgorithms;
     context0->rteBoard->GetChildrenByTag("algorithm", boardAlgorithms);
     for (const auto& boardAlgorithm : boardAlgorithms) {
@@ -134,7 +173,7 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
   }
 
   // sort collections starting with specific pnames
-  for (auto vec : { &algorithms, &memories, &debugs, &debugSequences }) {
+  for (auto vec : { &algorithms, &memories, &debugs, &debugSequences, &flashInfo }) {
     sort(vec->begin(), vec->end(), [](auto& left, auto& right) {
       return left.second.size() < right.second.size();
     });
@@ -177,6 +216,9 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
     item.size = memory->GetAttributeAsULL("size");
     item.fromPack = memory->GetPackageID(true);
     item.pname = memory->GetProcessorName();
+    if (memory->HasAttribute("default")) {
+      item.bDefault = memory->IsDefault();
+    }
     m_runDebug.systemResources.memories.push_back(item);
   }
 
@@ -200,6 +242,38 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
     }
   }
 
+  // flash info
+  for (const auto& [flash, _] : flashInfo) {
+    FlashInfoType item;
+    item.name = flash->GetName();
+    item.start = flash->GetAttributeAsULL("start");
+    item.pageSize = flash->GetAttributeAsULL("pagesize");
+    Collection<RteItem*> blocks;
+    for (const auto& block : flash->GetChildrenByTag("block", blocks)) {
+      FlashInfoBlockType b;
+      b.count = block->GetAttributeAsULL("count");
+      b.size = block->GetAttributeAsULL("size");
+      if (block->HasAttribute("arg")) {
+        b.arg = block->GetAttributeAsULL("arg");
+      }
+      item.blocks.push_back(b);
+    }
+    if (flash->HasAttribute("blankval")) {
+      item.blankVal = flash->GetAttributeAsULL("blankval");
+    }
+    if (flash->HasAttribute("filler")) {
+      item.fillVal = flash->GetAttributeAsULL("filler");
+    }
+    if (flash->HasAttribute("ptime")) {
+      item.ptime = flash->GetAttributeAsUnsigned("ptime");
+    }
+    if (flash->HasAttribute("etime")) {
+      item.etime = flash->GetAttributeAsUnsigned("etime");
+    }
+    item.pname = flash->GetProcessorName();
+    m_runDebug.flashInfo.push_back(item);
+  }
+
   // system descriptions
   for (const auto& [debug, _] : debugs) {
     const auto& svd = debug->GetAttribute("svd");
@@ -211,17 +285,26 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
       m_runDebug.systemDescriptions.push_back(item);
     }
   }
-  StrVec scvdFiles;
+  // scvd
+  StrVecMap scvdFiles;
   for (const auto& context : contexts) {
     for (const auto& [scvdFile, _] : context->rteActiveTarget->GetScvdFiles()) {
-      CollectionUtils::PushBackUniquely(scvdFiles, scvdFile);
+      CollectionUtils::PushBackUniquely(scvdFiles[scvdFile], context->deviceItem.pname);
     }
   }
-  for (const auto& scvdFile : scvdFiles) {
-    FilesType item;
-    item.file = scvdFile;
-    item.type = "scvd";
-    m_runDebug.systemDescriptions.push_back(item);
+  for (const auto& [scvdFile, pnameVec] : scvdFiles) {
+    const bool allPnames = pnameVec.size() == pnames.size();
+    // when one file is valid for multiple cores, but not for all cores -> multiple entries with a different pname each
+    for (const auto& pname : pnameVec) {
+      FilesType item;
+      item.file = scvdFile;
+      item.type = "scvd";
+      item.pname = allPnames ? "" : pname;
+      m_runDebug.systemDescriptions.push_back(item);
+      if (allPnames) {
+        break;
+      }
+    }
   }
 
   // outputs
@@ -253,7 +336,7 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
         item.load = item.type == RteConstants::OUTPUT_TYPE_ELF ? LOAD_IMAGE_SYMBOLS :
           item.type == RteConstants::OUTPUT_TYPE_LIB ? LOAD_NONE : LOAD_IMAGE;
       }
-      m_runDebug.outputs.push_back({ item.image, item.info, item.type, item.load, item.offset, item.pname });
+      m_runDebug.outputs.push_back({ item.image, item.info, item.type, item.load, item.offset, item.pname, RteUtils::EMPTY_STRING });
     }
   }
 
@@ -269,6 +352,11 @@ bool ProjMgrRunDebug::CollectSettings(const vector<ContextItem*>& contexts, cons
   }
 
   // debug sequences
+  const auto& traceSetup = static_cast<const RteDeviceElement*>(context0->rteDevice)->GetEffectiveAttribute("traceSetup");
+  if (traceSetup != "legacy") {
+    m_runDebug.debugSequencesConf.traceSetup = traceSetup;
+  }
+
   for (const auto& [debugSequence, _] : debugSequences) {
     DebugSequencesType sequence;
     sequence.name = debugSequence->GetName();
@@ -328,6 +416,14 @@ void ProjMgrRunDebug::CollectDebuggerSettings(const ContextItem& context, const 
     m_runDebug.debugger = defaultDebugger;
   }
 
+  // device-settings from dbgconf
+  if (m_runDebug.debugger.deviceSettings.empty() && !m_runDebug.debugger.dbgconf.empty()) {
+    m_runDebug.debugger.deviceSettings = ProjMgrUtils::ParseDbgconfFile(m_runDebug.debugger.dbgconf);
+  }
+  if (!m_runDebug.debugger.deviceSettings.empty()) {
+    m_runDebug.debugger.dbgconf.clear();
+  }
+
   // primary processor: pname of first cproject
   if (m_runDebug.debugger.startPname.empty()) {
     m_runDebug.debugger.startPname = context.deviceItem.pname;
@@ -363,9 +459,11 @@ void ProjMgrRunDebug::CollectDebuggerSettings(const ContextItem& context, const 
   // collect telnet options
   CollectTelnetOptions(context, adapter, pnames);
 
+  // collect system view options
+  CollectSystemViewOptions(context.debugger.systemView);
+
   // merge custom options
   MergeCustomItems(context.debugger.custom, m_runDebug.debugger.custom);
-
 }
 
 void ProjMgrRunDebug::CollectTelnetOptions(const ContextItem& context, DebugAdapterItem& adapter,
@@ -436,6 +534,11 @@ void ProjMgrRunDebug::SetTelnetPort(TelnetOptionsItem& item, unsigned long long&
     item.ullPort = port;
     usedPorts.insert(port);
   }
+}
+
+void ProjMgrRunDebug::CollectSystemViewOptions(const SystemViewItem& systemView)
+{
+  m_runDebug.debugger.systemView = systemView;
 }
 
 void ProjMgrRunDebug::CollectDebugTopology(const ContextItem& context, const vector<pair<const RteItem*, vector<string>>> debugs,
@@ -628,6 +731,7 @@ void ProjMgrRunDebug::AddGeneratedImage(const ContextItem* context, const string
     image.type = type;
     image.load = load;
     image.pname = context->deviceItem.pname;
+    image.project = context->cproject->name;
     image.offset = type == RteConstants::OUTPUT_TYPE_BIN ? context->loadOffset : RteUtils::EMPTY_STRING;
     m_runDebug.outputs.push_back(image);
   }

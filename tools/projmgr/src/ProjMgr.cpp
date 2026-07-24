@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -22,7 +22,8 @@ static constexpr const char* USAGE = "\n\
 Usage:\n\
   csolution <command> [<name>.csolution.yml] [options]\n\n\
 Commands:\n\
-  convert                       Convert user input *.yml files to *.cprj files\n\
+  check pack-updates            Check existing project for potential pack updates\n\
+  convert                       Convert user input *.yml files to *.cbuild.yml files\n\
   list boards                   Print list of available board names\n\
   list configs                  Print list of configuration files\n\
   list contexts                 Print list of contexts in a <name>.csolution.yml\n\
@@ -35,6 +36,7 @@ Commands:\n\
   list templates                Print list of templates\n\
   list generators               Print list of code generators of a given context\n\
   list layers                   Print list of available, referenced and compatible layers\n\
+  list npus                     Print list of available NPUs\n\
   list packs                    Print list of used packs from the pack repository\n\
   list target-sets              Print list of target-sets in a <name>.csolution.yml\n\
   list toolchains               Print list of supported toolchains\n\
@@ -47,7 +49,7 @@ Options:\n\
   -d, --debug                   Enable debug messages\n\
   -D, --dry-run                 Enable dry-run\n\
   -e, --export arg              Set suffix for exporting <context><suffix>.cprj retaining only specified versions\n\
-  -f, --filter arg              Filter words\n\
+  -f, --filter arg [...]        Filter output by word or string; repeat the option for multiple filters\n\
   -g, --generator arg           Code generator identifier\n\
   -l, --load arg                Set policy for packs loading [latest | all | required]\n\
   -L, --clayer-path arg         Set search path for external clayers\n\
@@ -68,6 +70,7 @@ ProjMgr::ProjMgr() :
   m_extGenerator(&m_parser),
   m_worker(&m_parser, &m_extGenerator),
   m_emitter(&m_parser, &m_worker),
+  m_mlops(&m_worker),
   m_rpcServer(*this),
   m_checkSchema(false),
   m_missingPacks(false),
@@ -145,7 +148,7 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
 
   cxxopts::Option solution("s,solution", "Input csolution.yml file", cxxopts::value<string>());
   cxxopts::Option context("c,context", "Input context names [<project-name>][.<build-type>][+<target-type>]", cxxopts::value<std::vector<std::string>>());
-  cxxopts::Option filter("f,filter", "Filter words", cxxopts::value<string>());
+  cxxopts::Option filter("f,filter", "Filter output by word or string; repeat the option for multiple filters", cxxopts::value<vector<string>>());
   cxxopts::Option help("h,help", "Print usage");
   cxxopts::Option generator("g,generator", "Code generator identifier", cxxopts::value<string>());
   cxxopts::Option load("l,load", "Set policy for packs loading [latest | all | required]", cxxopts::value<string>());
@@ -170,29 +173,32 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
   cxxopts::Option cbuildgen("cbuildgen", "Generate legacy *.cprj files", cxxopts::value<bool>()->default_value("false"));
   cxxopts::Option contentLength("content-length", "Prepend 'Content-Length' header to JSON RPC requests and responses", cxxopts::value<bool>()->default_value("false"));
   cxxopts::Option activeTargetSet("a,active", "Select active target-set: <target-type>[@<set>]", cxxopts::value<string>());
+  cxxopts::Option locked("locked", "Print available update version for locked packs", cxxopts::value<bool>()->default_value("false"));
 
   // command options dictionary
   map<string, std::pair<bool, vector<cxxopts::Option>>> optionsDict = {
     // command, optional args, options
-    {"update-rte",        { false, {context, contextSet, activeTargetSet, debug, load, quiet, schemaCheck, toolchain, verbose, frozenPacks}}},
-    {"convert",           { false, {context, contextSet, activeTargetSet, debug, exportSuffix, load, quiet, schemaCheck, noUpdateRte, output, outputAlt, toolchain, verbose, frozenPacks, cbuildgen}}},
-    {"run",               { false, {context, contextSet, activeTargetSet, debug, generator, load, quiet, schemaCheck, verbose, dryRun}}},
-    {"list packs",        { true,  {context, contextSet, activeTargetSet, debug, filter, load, missing, quiet, schemaCheck, toolchain, verbose}}},
-    {"list boards",       { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list devices",      { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list configs",      { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list components",   { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list dependencies", { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list examples",     { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list templates",    { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list contexts",     { false, {debug, filter, quiet, schemaCheck, verbose, ymlOrder}}},
-    {"list target-sets",  { false, {debug, filter, quiet, schemaCheck, verbose}}},
-    {"list debuggers",    { false, {debug, filter, quiet, schemaCheck, verbose}}},
-    {"list generators",   { false, {context, contextSet, activeTargetSet, debug, load, quiet, schemaCheck, toolchain, verbose}}},
-    {"list layers",       { false, {context, contextSet, activeTargetSet, debug, load, clayerSearchPath, quiet, schemaCheck, toolchain, verbose, updateIdx}}},
-    {"list toolchains",   { false, {context, contextSet, activeTargetSet, debug, quiet, toolchain, verbose}}},
-    {"list environment",  { true,  {}}},
-    {"rpc",               { true,  {contentLength}}},
+    {"update-rte",         { false, {context, contextSet, activeTargetSet, debug, load, quiet, schemaCheck, toolchain, verbose, frozenPacks}}},
+    {"convert",            { false, {context, contextSet, activeTargetSet, debug, exportSuffix, load, quiet, schemaCheck, noUpdateRte, output, outputAlt, toolchain, verbose, frozenPacks, cbuildgen}}},
+    {"run",                { false, {context, contextSet, activeTargetSet, debug, generator, load, quiet, schemaCheck, verbose, dryRun}}},
+    {"check pack-updates", { false, {context, contextSet, activeTargetSet, debug, load, quiet, schemaCheck, verbose}}},
+    {"list packs",         { true,  {context, contextSet, activeTargetSet, debug, filter, load, missing, locked, quiet, schemaCheck, toolchain, verbose}}},
+    {"list boards",        { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list devices",       { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list npus",          { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list configs",       { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list components",    { true,  {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list dependencies",  { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list examples",      { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list templates",     { false, {context, contextSet, activeTargetSet, debug, filter, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list contexts",      { false, {debug, filter, quiet, schemaCheck, verbose, ymlOrder}}},
+    {"list target-sets",   { false, {debug, filter, quiet, schemaCheck, verbose}}},
+    {"list debuggers",     { false, {debug, filter, quiet, schemaCheck, verbose}}},
+    {"list generators",    { false, {context, contextSet, activeTargetSet, debug, load, quiet, schemaCheck, toolchain, verbose}}},
+    {"list layers",        { false, {context, contextSet, activeTargetSet, debug, load, clayerSearchPath, quiet, schemaCheck, toolchain, verbose, updateIdx}}},
+    {"list toolchains",    { false, {context, contextSet, activeTargetSet, debug, quiet, toolchain, verbose}}},
+    {"list environment",   { true,  {}}},
+    {"rpc",                { true,  {contentLength}}},
   };
 
   try {
@@ -201,7 +207,8 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
       solution, context, contextSet, filter, generator,
       load, clayerSearchPath, missing, schemaCheck, noUpdateRte, output, outputAlt,
       help, version, verbose, debug, dryRun, exportSuffix, toolchain, ymlOrder,
-      relativePaths, frozenPacks, updateIdx, quiet, cbuildgen, contentLength, activeTargetSet
+      relativePaths, frozenPacks, updateIdx, quiet, cbuildgen, contentLength,
+      activeTargetSet, locked
     });
     options.parse_positional({ "positional" });
 
@@ -228,8 +235,10 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
     m_cbuildgen = parseResult.count("cbuildgen");
     m_worker.SetCbuild2Cmake(!m_cbuildgen);
     ProjMgrLogger::m_quiet = parseResult.count("quiet");
+    ProjMgrLogger::m_verbose = m_verbose;
     m_rpcServer.SetContentLengthHeader(parseResult.count("content-length"));
     m_rpcServer.SetDebug(m_debug);
+    m_locked = parseResult.count("locked");
 
     vector<string> positionalArguments;
     if (parseResult.count("positional")) {
@@ -273,7 +282,14 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
       m_context = parseResult["context"].as<vector<string>>();
     }
     if (parseResult.count("filter")) {
-      m_filter = parseResult["filter"].as<string>();
+      const auto filters = parseResult["filter"].as<vector<string>>();
+      m_filter.clear();
+      for (const auto& f : filters) {
+        if (!m_filter.empty()) {
+          m_filter += " ";
+        }
+        m_filter += f;
+      }
     }
     if (parseResult.count("generator")) {
       m_codeGenerator = parseResult["generator"].as<string>();
@@ -308,6 +324,12 @@ int ProjMgr::ParseCommandLine(int argc, char** argv) {
 
   if (parseResult.count("help")) {
     return PrintUsage(optionsDict, m_command, m_args) ? -1 : 1;
+  }
+
+  // Validate mutually exclusive options
+  if (ProjMgrLogger::m_quiet && ProjMgrLogger::m_verbose) {
+    ProjMgrLogger::Get().Error("command line options '--quiet' and '--verbose' are mutually exclusive");
+    return ErrorCode::ERROR;
   }
 
   // Set load packs policy
@@ -345,75 +367,9 @@ int ProjMgr::RunProjMgr(int argc, char** argv, char** envp) {
 
 int ProjMgr::ProcessCommands() {
   if (m_command == "list") {
-    // Process 'list' command
-    if (m_args.empty()) {
-      ProjMgrLogger::Get().Error("list <args> was not specified");
-      return ErrorCode::ERROR;
-    }
-    // Process argument
-    if (m_args == "packs") {
-      if (!RunListPacks()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "boards") {
-      if (!RunListBoards()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "devices") {
-      if (!RunListDevices()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "components") {
-      if (!RunListComponents()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "configs") {
-      if (!RunListConfigs()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "dependencies") {
-      if (!RunListDependencies()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "examples") {
-      if (!RunListExamples()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "templates") {
-      if (!RunListTemplates()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "contexts") {
-      if (!RunListContexts()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "target-sets") {
-      if (!RunListTargetSets()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "debuggers") {
-      if (!RunListDebuggers()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "generators") {
-      if (!RunListGenerators()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "layers") {
-      if (!RunListLayers()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "toolchains") {
-      if (!RunListToolchains()) {
-        return ErrorCode::ERROR;
-      }
-    } else if (m_args == "environment") {
-      RunListEnvironment();
-    }
-    else {
-      ProjMgrLogger::Get().Error("list <args> was not found");
-      return ErrorCode::ERROR;
-    }
+    return ProcessListCommand();
+  } else if (m_command == "check") {
+    return ProcessCheckCommand();
   } else if (m_command == "update-rte") {
     // Process 'update-rte' command
     if (!RunConfigure()) {
@@ -453,6 +409,59 @@ int ProjMgr::ProcessCommands() {
   return ErrorCode::SUCCESS;
 }
 
+int ProjMgr::ProcessListCommand() {
+  // Process 'list' command
+  if (m_args.empty()) {
+    ProjMgrLogger::Get().Error("list <args> was not specified");
+    return ErrorCode::ERROR;
+  }
+  // Process argument
+  const map<string, function<bool()>> handlers = {
+    { "packs",        [this]() { return RunListPacks(); } },
+    { "boards",       [this]() { return RunListBoards(); } },
+    { "devices",      [this]() { return RunListDevices(); } },
+    { "npus",         [this]() { return RunListNpus(); } },
+    { "components",   [this]() { return RunListComponents(); } },
+    { "configs",      [this]() { return RunListConfigs(); } },
+    { "dependencies", [this]() { return RunListDependencies(); } },
+    { "examples",     [this]() { return RunListExamples(); } },
+    { "templates",    [this]() { return RunListTemplates(); } },
+    { "contexts",     [this]() { return RunListContexts(); } },
+    { "target-sets",  [this]() { return RunListTargetSets(); } },
+    { "debuggers",    [this]() { return RunListDebuggers(); } },
+    { "generators",   [this]() { return RunListGenerators(); } },
+    { "layers",       [this]() { return RunListLayers(); } },
+    { "toolchains",   [this]() { return RunListToolchains(); } },
+    { "environment",  [this]() { RunListEnvironment(); return true; } }
+  };
+  const auto it = handlers.find(m_args);
+  if (it == handlers.end()) {
+    ProjMgrLogger::Get().Error("list <args> was not found");
+    return ErrorCode::ERROR;
+  }
+
+  return it->second() ? ErrorCode::SUCCESS : ErrorCode::ERROR;
+}
+
+int ProjMgr::ProcessCheckCommand() {
+  // Process 'check' command
+  if (m_args.empty()) {
+    ProjMgrLogger::Get().Error("check <args> was not specified");
+    return ErrorCode::ERROR;
+  }
+  // Process argument
+  const map<string, function<bool()>> handlers = {
+    { "pack-updates", [this]() { return RunCheckPackVerCmd(); } }
+  };
+  const auto it = handlers.find(m_args);
+  if (it == handlers.end()) {
+    ProjMgrLogger::Get().Error("check <args> was not found");
+    return ErrorCode::ERROR;
+  }
+
+  return it->second() ? ErrorCode::SUCCESS : ErrorCode::ERROR;
+}
+
 // Set load packs policy
 bool ProjMgr::SetLoadPacksPolicy(void) {
   if (m_loadPacksPolicy.empty()) {
@@ -471,6 +480,8 @@ bool ProjMgr::SetLoadPacksPolicy(void) {
 }
 
 bool ProjMgr::PopulateContexts(void) {
+  bool result = true;
+
   if (!m_csolutionFile.empty()) {
     // Parse csolution
     if (!m_parser.ParseCsolution(m_csolutionFile, m_checkSchema, m_frozenPacks)) {
@@ -514,14 +525,14 @@ bool ProjMgr::PopulateContexts(void) {
       string const& cprojectFile = fs::canonical(m_rootDir + "/" + cproject, ec).generic_string();
       if (cprojectFile.empty()) {
         ProjMgrLogger::Get().Error("cproject file was not found", "", cproject);
-        return false;
+        result = false;
       }
-      if (!m_parser.ParseCproject(cprojectFile, m_checkSchema)) {
-        return false;
+      else if (!m_parser.ParseCproject(cprojectFile, m_checkSchema)) {
+        result = false;
       }
     }
   } else {
-    ProjMgrLogger::Get().Error("input yml files were not specified");
+    ProjMgrLogger::Get().Error("csolution file not specified");
     return false;
   }
 
@@ -532,9 +543,6 @@ bool ProjMgr::PopulateContexts(void) {
   m_worker.SetOutputDir(m_outputDir);
   m_emitter.SetOutputDir(m_outputDir.empty() ? m_rootDir : RteFsUtils::AbsolutePath(m_outputDir).generic_string());
 
-  // Update tmp directory
-  m_worker.UpdateTmpDir();
-
   // Set root directory
   m_worker.SetRootDir(m_rootDir);
 
@@ -544,14 +552,17 @@ bool ProjMgr::PopulateContexts(void) {
     const string& cprojectFile = fs::path(descriptor.cproject).is_absolute() ?
       descriptor.cproject : fs::canonical(m_rootDir + "/" + descriptor.cproject, ec).generic_string();
     if (!m_worker.AddContexts(m_parser, descriptor, cprojectFile)) {
-      return false;
+      result = false;
     }
   }
 
   // Populate active target-set
   if (m_activeTargetSet.has_value() && !m_worker.PopulateActiveTargetSet(m_activeTargetSet.value())) {
-    return false;
+    result = false;
   }
+
+  // Update tmp directory
+  m_worker.UpdateTmpDir();
 
   // Add image only context
   m_worker.AddImageOnlyContext();
@@ -559,7 +570,7 @@ bool ProjMgr::PopulateContexts(void) {
   // Retrieve all context types
   m_worker.RetrieveAllContextTypes();
 
-  return true;
+  return result;
 }
 
 bool ProjMgr::GenerateYMLConfigurationFiles(bool previousResult) {
@@ -596,13 +607,24 @@ bool ProjMgr::GenerateYMLConfigurationFiles(bool previousResult) {
     }
   }
 
-  // Generate cbuild index file
-  if (!m_allContexts.empty()) {
-    map<string, ExecutesItem> executes;
-    m_worker.GetExecutes(executes);
-    if (!m_emitter.GenerateCbuildIndex(m_processedContexts, m_failedContext, executes)) {
-      return false;
+  // Get executes
+  map<string, ExecutesItem> executes;
+  m_worker.GetExecutes(executes);
+
+  // Generate cbuild-mlops file
+  if (m_parser.GetCsolution().mlops.enabled) {
+    MlopsType mlops;
+    if (!m_mlops.CollectSettings(m_parser.GetCsolution(), mlops)) {
+      result = false;
     }
+    if (!m_emitter.GenerateMlops(mlops)) {
+      result = false;
+    }
+  }
+
+  // Generate cbuild index file
+  if (!m_emitter.GenerateCbuildIndex(m_processedContexts, m_failedContext, executes)) {
+    return false;
   }
 
   return result;
@@ -632,13 +654,15 @@ bool ProjMgr::ParseAndValidateContexts() {
 }
 
 bool ProjMgr::Configure() {
+  bool result = true;
+
   // Parse all input files and populate contexts inputs
   if (!PopulateContexts()) {
-    return false;
+    result = false;
   }
 
   if (!ParseAndValidateContexts()) {
-    return false;
+    result = false;
   }
 
   if (m_worker.HasVarDefineError()) {
@@ -651,24 +675,26 @@ bool ProjMgr::Configure() {
   }
 
   // Process contexts
-  bool error = !ProcessContexts();
+  if (!ProcessContexts()) {
+    result = false;
+  }
 
   if (m_worker.HasToolchainErrors()) {
-    error = true;
+    result = false;
   }
 
   m_selectedToolchain = m_worker.GetSelectedToochain();
 
   // Process solution level executes
   if (!m_worker.ProcessSolutionExecutes()) {
-    error = true;
+    result = false;
   }
   // Process executes dependencies
   m_worker.ProcessExecutesDependencies();
 
   // Check missing files
   if (!m_worker.CheckMissingFiles()) {
-    error = true;
+    result = false;
   }
 
   // Collect unused packs
@@ -689,7 +715,7 @@ bool ProjMgr::Configure() {
     }
   }
 
-  return !error;
+  return result;
 }
 
 bool ProjMgr::ProcessContexts() {
@@ -804,7 +830,7 @@ bool ProjMgr::RunListPacks(void) {
   }
 
   vector<string> packs;
-  bool ret = m_worker.ListPacks(packs, m_missingPacks, m_filter);
+  bool ret = m_worker.ListPacks(packs, m_missingPacks, m_locked, m_filter);
   for (const auto& pack : packs) {
     ProjMgrLogger::out() << pack << endl;
   }
@@ -812,152 +838,44 @@ bool ProjMgr::RunListPacks(void) {
 }
 
 bool ProjMgr::RunListBoards(void) {
-  if (!m_csolutionFile.empty()) {
-    // Parse all input files and create contexts
-    if (!PopulateContexts()) {
-      return false;
-    }
-  }
-
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> boards;
-  if (!m_worker.ListBoards(boards, m_filter)) {
-    ProjMgrLogger::Get().Error("processing boards list failed");
-    return false;
-  }
-  for (const auto& device : boards) {
-    ProjMgrLogger::out() << device << endl;
-  }
-  return true;
+  return RunListCommand(&ProjMgrWorker::ListBoards, "processing boards list failed", false);
 }
 
 bool ProjMgr::RunListDevices(void) {
-  if (!m_csolutionFile.empty()) {
-    // Parse all input files and create contexts
-    if (!PopulateContexts()) {
-      return false;
-    }
-  }
+  return RunListCommand(&ProjMgrWorker::ListDevices, "processing devices list failed", false);
+}
 
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> devices;
-  if (!m_worker.ListDevices(devices, m_filter)) {
-    ProjMgrLogger::Get().Error("processing devices list failed");
-    return false;
-  }
-  for (const auto& device : devices) {
-    ProjMgrLogger::out() << device << endl;
-  }
-  return true;
+bool ProjMgr::RunListNpus(void) {
+  return RunListCommand(&ProjMgrWorker::ListNpus, "processing NPUs list failed", false);
 }
 
 bool ProjMgr::RunListComponents(void) {
-  if (!m_csolutionFile.empty()) {
-    // Parse all input files and create contexts
-    if (!PopulateContexts()) {
-      return false;
-    }
-  }
-
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> components;
-  if (!m_worker.ListComponents(components, m_filter)) {
-    ProjMgrLogger::Get().Error("processing components list failed");
-    return false;
-  }
-
-  for (const auto& component : components) {
-    ProjMgrLogger::out() << component << endl;
-  }
-  return true;
+  return RunListCommand(&ProjMgrWorker::ListComponents, "processing components list failed", false);
 }
 
-bool ProjMgr::RunListConfigs() {
-  // Parse all input files and create contexts
-  if (!PopulateContexts()) {
-    return false;
-  }
-
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> configFiles;
-  if (!m_worker.ListConfigs(configFiles, m_filter)) {
-    ProjMgrLogger::Get().Error("processing config list failed");
-    return false;
-  }
-
-  for (const auto& configFile : configFiles) {
-    ProjMgrLogger::out() << configFile << endl;
-  }
-  return true;
+bool ProjMgr::RunListConfigs(void) {
+  return RunListCommand(&ProjMgrWorker::ListConfigs, "processing config list failed", true);
 }
 
 bool ProjMgr::RunListDependencies(void) {
-  // Parse all input files and create contexts
-  if (!PopulateContexts()) {
-    return false;
-  }
-
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> dependencies;
-  if (!m_worker.ListDependencies(dependencies, m_filter)) {
-    ProjMgrLogger::Get().Error("processing dependencies list failed");
-    return false;
-  }
-
-  for (const auto& dependency : dependencies) {
-    ProjMgrLogger::out() << dependency << endl;
-  }
-  return true;
+  return RunListCommand(&ProjMgrWorker::ListDependencies, "processing dependencies list failed", true);
 }
 
 bool ProjMgr::RunListExamples(void) {
-  if (!m_csolutionFile.empty()) {
-    // Parse all input files and create contexts
-    if (!PopulateContexts()) {
-      return false;
-    }
-  }
-
-  // Parse context selection
-  if (!ParseAndValidateContexts()) {
-    return false;
-  }
-
-  vector<string> examples;
-  if (!m_worker.ListExamples(examples, m_filter)) {
-    ProjMgrLogger::Get().Error("processing examples list failed");
-    return false;
-  }
-
-  for (const auto& example : examples) {
-    ProjMgrLogger::out() << example << endl;
-  }
-  return true;
+  return RunListCommand(&ProjMgrWorker::ListExamples, "processing examples list failed", false);
 }
 
 bool ProjMgr::RunListTemplates(void) {
-  if (!m_csolutionFile.empty()) {
-    // Parse all input files and create contexts
+  return RunListCommand(&ProjMgrWorker::ListTemplates, "processing templates list failed", false);
+}
+
+bool ProjMgr::RunListCommand(
+  bool (ProjMgrWorker::* listMethod)(vector<string>&, const string&),
+  const string& errorMessage,
+  bool alwaysPopulate)
+{
+  // Parse all input files and create contexts
+  if (alwaysPopulate || !m_csolutionFile.empty()) {
     if (!PopulateContexts()) {
       return false;
     }
@@ -968,14 +886,14 @@ bool ProjMgr::RunListTemplates(void) {
     return false;
   }
 
-  vector<string> csolutionTemplates;
-  if (!m_worker.ListTemplates(csolutionTemplates, m_filter)) {
-    ProjMgrLogger::Get().Error("processing templates list failed");
+  vector<string> items;
+  if (!(m_worker.*listMethod)(items, m_filter)) {
+    ProjMgrLogger::Get().Error(errorMessage);
     return false;
   }
 
-  for (const auto& csolutionTemplate : csolutionTemplates) {
-    ProjMgrLogger::out() << csolutionTemplate << endl;
+  for (const auto& item : items) {
+    ProjMgrLogger::out() << item << endl;
   }
   return true;
 }
@@ -1149,6 +1067,29 @@ bool ProjMgr::RunCodeGenerator(void) {
     return false;
   }
   return true;
+}
+
+bool ProjMgr::RunCheckPackVerCmd(void) {
+  if (m_csolutionFile.empty()) {
+    ProjMgrLogger::Get().Error("input csolution.yml was not specified");
+    return false;
+  }
+  // Check input options
+  if (!PopulateContexts()) {
+    return false;
+  }
+  // Parse all input files and create contexts
+  if (!ParseAndValidateContexts()) {
+    return false;
+  }
+
+  vector<string> outputs;
+  const bool result = m_worker.CheckPackVerAndCollectRelNotes(outputs, m_filter);
+
+  for (const auto& line : outputs) {
+    ProjMgrLogger::out() << line << std::endl;
+  }
+  return result;
 }
 
 bool ProjMgr::RunListToolchains(void) {

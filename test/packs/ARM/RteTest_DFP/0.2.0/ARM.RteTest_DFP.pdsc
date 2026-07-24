@@ -31,6 +31,10 @@
       <algorithm name="Device/ARM/Flash/FAMILY.FLM" start="0x00000000" size="0x00040000"  default="1"/>
       <algorithm name="Device/ARM/Flash/NonDefaultAlgo.FLM" start="0x00000000" size="0x00010000"/>
       <algorithm name="Device/ARM/Flash/IARAlgo.FLM" start="0x00000000" size="0x00020000" default="1" style="IAR"/>
+      <flashinfo name="Family Flash" start="0x80000000" pagesize="0x00000100">
+        <block count="64" size="0x100"/>
+        <block count="128" size="0x400"/>
+      </flashinfo>
       <debugvars configfile="Device/ARM/Debug/ARMCM.dbgconf" version="0.0.2">
         __var DbgMCU_CR      = 0x00000007;   // DBGMCU_CR: DBG_SLEEP, DBG_STOP, DBG_STANDBY
         __var TraceClk_Pin   = 0x00040002;   // PE2
@@ -130,15 +134,19 @@
       <debug svd="Device/ARM/SVD/ARMCM0.svd"/>  <!-- SVD files do not contain any peripheral -->
       <memory id="IROM1" start="0x00000000" size="0x00040000" startup="1" default="1"/>
       <memory id="IRAM1" start="0x20000000" size="0x00020000" uninit="1" default="1"/>
-
+      <environment name="VELA">
+        <file name="Scripts/vela/vela_subfamilyLevel.ini" type="ini"/>
+      </environment>
       <device Dname="RteTest_ARMCM0">
         <processor Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"/>
         <compile header="Device/ARM/ARMCM0/Include/ARMCM0.h" define="ARMCM0"/>
       </device>
 
       <device Dname="RteTest_ARMCM0_Dual">
-        <processor Pname="cm0_core0" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000" />
-        <processor Pname="cm0_core1" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"/>
+        <processor Pname="cm0_core0" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"
+          Ddsp="NO_DSP" Dtz="NO_TZ" Dmve="FP_MVE" Dcdecp="0x12" Dpacbti="NO_PACBTI"/>
+        <processor Pname="cm0_core1" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="DP_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"
+          Ddsp="DSP" Dtz="TZ" Dmve="MVE" Dcdecp="0x34" Dpacbti="PACBTI" Punits="1"/>
         <compile header="Device/ARM/ARMCM0/Include/ARMCM0.h" define="ARMCM0"/>
         <memory name="FLASH_DUAL" access="rx" start="0x00000000" size="0x00080000" startup="1" default="1" Pname="cm0_core0"/>
         <memory name="SRAM_DUAL"  access="rwx" start="0x80000000" size="0x00020000" uninit="1" default="1" Pname="cm0_core1"/>
@@ -150,10 +158,20 @@
           <datapatch  __dp="0" __ap="0" address="0xE0040FF0" value="0x0D" info="CIDR0"/>
         </debug>
         <algorithm name="Device/ARM/Flash/CortexM4Dual.FLM" start="0x000A0000" size="0x00020000" RAMstart="0x000C0000" RAMsize="0x00040000" Pname="cm0_core1" default="1"/>
+        <flashinfo name="Internal Flash 16KB" start="0x0000F000" blankval="0x0000000000000000" filler="0xCCCCCCCCCCCCCCCC" pagesize="0x00000040" ptime="100000" etime="1000000" Pname="cm0_core1">
+          <block count="64" size="0x100" arg="0"/>
+        </flashinfo>
+        <feature type="NPU" n="Ethos-U55" m="128MACs" Pname="cm0_core0"/>
+        <feature type="NPU" n="Ethos-U55" m="256MACs" Pname="cm0_core1"/>
+        <feature type="NPU" n="Ethos-U85"/> 
+        <environment name="VELA">
+          <file name="Scripts/vela/vela_deviceLevel.ini" type="ini"/>
+        </environment>
       </device>
       <device Dname="RteTest_ARMCM0_Single">
         <processor Pname="cm0_core1" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"/>
         <compile header="Device/ARM/ARMCM0/Include/ARMCM0.h" define="ARMCM0"/>
+        <feature type="NPU" n="Ethos-U55" m="128MACs"/>
       </device>
       <device Dname="RteTest_ARMCM0_Test">
         <processor Pname="cm0_core2" Dcore="Cortex-M0" DcoreVersion="r0p0" Dfpu="NO_FPU" Dmpu="NO_MPU" Dendian="Configurable" Dclock="10000000"/>
@@ -213,6 +231,7 @@
         <processor Dcore="Cortex-M4" DcoreVersion="r0p1" Dmpu="MPU" Dendian="Configurable" Dclock="10000000"/>
         <compile header="Device/ARM/ARMCM4/Include/ARMCM4.h" define="ARMCM4"/>
         <algorithm name="Device/ARM/Flash/CortexM4Device.FLM" start="0x00000000" size="0x00040000" default="1"/>
+        <sequences traceSetup="full"/>
 
       <variant Dvariant="RteTest_ARMCM4_NOFP">
         <processor Dfpu="NO_FPU"/>
@@ -474,7 +493,7 @@
       </files>
     </component>
 
-    <component Cclass="RteTest" Cgroup="scvd" Cversion="1.1.1" condition="ARMCM3 RteTest">
+    <component Cclass="RteTest" Cgroup="scvd" Cversion="1.1.1" condition="DeviceDependent">
     <description>scvd test</description>
       <files>
         <file category="other"  name="Components/RteTest.scvd"/>

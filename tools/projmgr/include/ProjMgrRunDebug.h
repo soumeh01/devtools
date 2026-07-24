@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2024-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -36,9 +36,53 @@ struct MemoryType {
   std::string access;
   std::string alias;
   std::string fromPack;
+  std::optional<bool> bDefault;
   unsigned long long start = 0;
   unsigned long long size = 0;
   std::string pname;
+};
+
+/**
+  * @brief flash info block
+ */
+struct FlashInfoBlockType {
+  unsigned long long count = 0;
+  unsigned long long size = 0;
+  std::optional<unsigned long long> arg;
+};
+
+/**
+  * @brief flash info
+ */
+struct FlashInfoType {
+  std::string name;
+  unsigned long long start = 0;
+  unsigned long long pageSize = 0;
+  std::vector<FlashInfoBlockType> blocks;
+  std::optional<unsigned long long> blankVal;
+  std::optional<unsigned long long> fillVal;
+  std::optional<unsigned int> ptime;
+  std::optional<unsigned int> etime;
+  std::string pname;
+};
+
+/**
+  * @brief processor capabilities
+ */
+struct ProcessorCapabilitiesType {
+  std::string core;
+  std::string revision;
+  std::string pname;
+  std::string endian;
+  std::string fpu;
+  std::string mpu;
+  std::string dsp;
+  std::string trustzone;
+  std::string mve;
+  std::string pacbti;
+  unsigned int maxClock = 0;
+  std::optional<unsigned int> punits;
+  std::optional<unsigned int> cdecp;
 };
 
 /**
@@ -46,6 +90,7 @@ struct MemoryType {
 */
 struct SystemResourcesType {
   std::vector<MemoryType> memories;
+  std::vector<ProcessorCapabilitiesType> processors;
 };
 
 /**
@@ -58,6 +103,7 @@ struct FilesType {
   std::string load;
   std::string offset;
   std::string pname;
+  std::string project;
 };
 
 /**
@@ -81,6 +127,13 @@ struct DebugSequencesType {
   std::string info;
   std::vector<DebugSequencesBlockType> blocks;
   std::string pname;
+};
+
+/**
+ * @brief debug sequences configuration type
+*/
+struct DebugSequencesConfType {
+  std::string traceSetup;
 };
 
 /**
@@ -166,14 +219,18 @@ struct RunDebugType {
   std::string compiler;
   std::string board;
   std::string boardPack;
+  std::string boardPackPath;
   std::string device;
   std::string devicePack;
+  std::string devicePackPath;
   std::vector<AlgorithmType> algorithms;
+  std::vector<FlashInfoType> flashInfo;
   std::vector<FilesType> outputs;
   std::vector<FilesType> systemDescriptions;
   SystemResourcesType systemResources;
   DebuggerType debugger;
   DebugVarsType debugVars;
+  DebugSequencesConfType debugSequencesConf;
   std::vector<DebugSequencesType> debugSequences;
   DebugTopologyType debugTopology;
 };
@@ -227,6 +284,7 @@ protected:
     const std::map<std::string, RteDeviceProperty*>& pnames);
   void CollectTelnetOptions(const ContextItem& context, DebugAdapterItem& adapter,
     const std::map<std::string, RteDeviceProperty*>& pnames);
+  void CollectSystemViewOptions(const SystemViewItem& context);
   void SetTelnetPort(TelnetOptionsItem& item, unsigned long long& port, std::set<unsigned long long>& usedPorts);
   CustomItem& CustomMapFind(std::vector<std::pair<std::string, CustomItem>>& customMap, const std::string& key);
   void MergeCustomItems(const CustomItem& src, CustomItem& dst);

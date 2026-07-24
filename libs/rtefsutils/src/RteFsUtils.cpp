@@ -6,7 +6,7 @@
 */
 /******************************************************************************/
 /*
- * Copyright (c) 2020-2021 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,6 +14,7 @@
 
 #include "RteFsUtils.h"
 
+#include "CrossPlatform.h"
 #include "CrossPlatformUtils.h"
 #include "RteUtils.h"
 #include "WildCards.h"
@@ -103,6 +104,16 @@ bool RteFsUtils::ReadFile(const string& fileName, string& buffer) {
   return true;
 }
 
+bool RteFsUtils::CmpFiles(const string& fileName1, const string& fileName2) {
+
+  // Open files and read content
+  string fileBuffer1, fileBuffer2;
+  if (!ReadFile(fileName1, fileBuffer1) || !ReadFile(fileName2, fileBuffer2)) {
+    return false;
+  }
+  // Compare buffer contents with normalized line endings
+  return RteUtils::EnsureLf(fileBuffer1) == RteUtils::EnsureLf(fileBuffer2);
+}
 
 bool RteFsUtils::CmpFileMem(const string& fileName, const string& buffer) {
 
@@ -904,6 +915,35 @@ bool RteFsUtils::FindFileWithPattern(const std::string& searchDir,
     // do nothing, anyway it is false
   }
   return false; // No matching file found
+}
+
+fs::file_time_type RteFsUtils::GetModificationTime(const std::string& path) {
+
+  if(path.empty()) {
+    return fs::file_time_type{}; // return default time
+  }
+  std::error_code ec;
+  auto modificationTime = fs::last_write_time(path, ec);
+  if(ec) {
+    return fs::file_time_type{}; // return default time
+  }
+  return modificationTime;
+}
+
+std::string RteFsUtils::FileTimeToString(const fs::file_time_type& timeStamp) {
+   std::string strTime;
+   if(timeStamp != fs::file_time_type{}) { // default value, return empty string
+     // Convert file_time_type to system_clock (C++ 17 compatible version)
+     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+       timeStamp - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+     std::time_t t = std::chrono::system_clock::to_time_t(sctp);
+    std::tm tm{};
+    localtime_s(&tm, &t);      // Windows secure version
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+    strTime = oss.str();
+   }
+   return strTime;
 }
 
 // End of RteFsUtils.cpp

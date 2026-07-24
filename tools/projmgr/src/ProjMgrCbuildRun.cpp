@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -20,10 +20,13 @@ public:
 protected:
   std::string m_directory;
   void SetProgrammingNode(YAML::Node node, const std::vector<AlgorithmType>& algorithms);
+  void SetFlashInfoNode(YAML::Node node, const std::vector<FlashInfoType>& flashInfo);
   void SetFilesNode(YAML::Node node, const std::vector<FilesType>& outputs);
   void SetResourcesNode(YAML::Node node, const SystemResourcesType& systemResources);
   void SetDebuggerNode(YAML::Node node, const DebuggerType& debugger);
+  void SetDeviceSettingsNode(YAML::Node node, const std::map<std::string, std::string>& deviceSettings);
   void SetDebugVarsNode(YAML::Node node, const DebugVarsType& debugVars);
+  void SetDebugSequencesConfNode(YAML::Node node, const DebugSequencesConfType& sequenceConf);
   void SetDebugSequencesNode(YAML::Node node, const std::vector<DebugSequencesType>& algorithms);
   void SetDebugSequencesBlockNode(YAML::Node node, const std::vector<DebugSequencesBlockType>& blocks);
   void SetDebugTopologyNode(YAML::Node node, const DebugTopologyType& topology);
@@ -33,6 +36,7 @@ protected:
   void SetDatapatchNode(YAML::Node node, const std::vector<DatapatchType>& datapatch);
   void SetGdbServerNode(YAML::Node node, const std::vector<GdbServerItem>& gdbserver);
   void SetTelnetNode(YAML::Node node, const std::map<std::string, TelnetOptionsItem>& telnet);
+  void SetSystemViewNode(YAML::Node node, const SystemViewItem& systemView);
   void SetCustomNodes(YAML::Node node, const CustomItem& debugger);
   YAML::Node GetCustomNode(const CustomItem& value);
 };
@@ -46,15 +50,23 @@ ProjMgrCbuildRun::ProjMgrCbuildRun(YAML::Node node,
   SetNodeValue(node[YAML_COMPILER], debugRun.compiler);
   SetNodeValue(node[YAML_BOARD], debugRun.board);
   SetNodeValue(node[YAML_BOARD_PACK], debugRun.boardPack);
+  if (!debugRun.boardPackPath.empty()) {
+    SetNodeValue(node[YAML_BOARD_PACK_PATH], FormatPath(debugRun.boardPackPath, m_directory));
+  }
   SetNodeValue(node[YAML_DEVICE], debugRun.device);
   SetNodeValue(node[YAML_DEVICE_PACK], debugRun.devicePack);
+  if (!debugRun.devicePackPath.empty()) {
+    SetNodeValue(node[YAML_DEVICE_PACK_PATH], FormatPath(debugRun.devicePackPath, m_directory));
+  }
   SetFilesNode(node[YAML_OUTPUT], debugRun.outputs);
   SetResourcesNode(node[YAML_SYSTEM_RESOURCES], debugRun.systemResources);
   SetFilesNode(node[YAML_SYSTEM_DESCRIPTIONS], debugRun.systemDescriptions);
   SetDebuggerNode(node[YAML_DEBUGGER], debugRun.debugger);
   SetDebugVarsNode(node[YAML_DEBUG_VARS], debugRun.debugVars);
+  SetDebugSequencesConfNode(node[YAML_DEBUG_SEQUENCES_CONF], debugRun.debugSequencesConf);
   SetDebugSequencesNode(node[YAML_DEBUG_SEQUENCES], debugRun.debugSequences);
   SetProgrammingNode(node[YAML_PROGRAMMING], debugRun.algorithms);
+  SetFlashInfoNode(node[YAML_FLASH_INFO], debugRun.flashInfo);
   SetDebugTopologyNode(node[YAML_DEBUG_TOPOLOGY], debugRun.debugTopology);
 };
 
@@ -71,12 +83,47 @@ void ProjMgrCbuildRun::SetProgrammingNode(YAML::Node node, const std::vector<Alg
   }
 }
 
+void ProjMgrCbuildRun::SetFlashInfoNode(YAML::Node node, const std::vector<FlashInfoType>& flashInfo) {
+  for (const auto& item : flashInfo) {
+    YAML::Node flashInfoNode;
+    SetNodeValue(flashInfoNode[YAML_NAME], item.name);
+    SetNodeValue(flashInfoNode[YAML_START], ProjMgrUtils::ULLToHex(item.start));
+    SetNodeValue(flashInfoNode[YAML_PAGE_SIZE], ProjMgrUtils::ULLToHex(item.pageSize));
+    if (!item.blocks.empty()) {
+      for (const auto& block : item.blocks) {
+        YAML::Node blockNode;
+        blockNode[YAML_COUNT] = block.count;
+        SetNodeValue(blockNode[YAML_SIZE], ProjMgrUtils::ULLToHex(block.size));
+        if (block.arg.has_value()) {
+          blockNode[YAML_ARG] = block.arg.value();
+        }
+        flashInfoNode[YAML_BLOCKS].push_back(blockNode);
+      }
+    }
+    if (item.blankVal.has_value()) {
+      SetNodeValue(flashInfoNode[YAML_BLANK_VAL], ProjMgrUtils::ULLToHex(item.blankVal.value(), 16));
+    }
+    if (item.fillVal.has_value()) {
+      SetNodeValue(flashInfoNode[YAML_FILL_VAL], ProjMgrUtils::ULLToHex(item.fillVal.value(), 16));
+    }
+    if (item.ptime.has_value()) {
+      flashInfoNode[YAML_PTIME] = item.ptime.value();
+    }
+    if (item.etime.has_value()) {
+      flashInfoNode[YAML_ETIME] = item.etime.value();
+    }
+    SetNodeValue(flashInfoNode[YAML_PNAME], item.pname);
+    node.push_back(flashInfoNode);
+  }
+}
+
 void ProjMgrCbuildRun::SetFilesNode(YAML::Node node, const std::vector<FilesType>& files) {
   for (const auto& item : files) {
     YAML::Node fileNode;
     SetNodeValue(fileNode[YAML_FILE], FormatPath(item.file, m_directory));
     SetNodeValue(fileNode[YAML_INFO], item.info);
     SetNodeValue(fileNode[YAML_TYPE], item.type);
+    SetNodeValue(fileNode[YAML_PROJECT], item.project);
     SetNodeValue(fileNode[YAML_LOAD], item.load);
     if (!item.offset.empty()) {
       fileNode[YAML_LOAD_OFFSET] = ProjMgrUtils::ULLToHex(RteUtils::StringToULL(item.offset));
@@ -95,8 +142,37 @@ void ProjMgrCbuildRun::SetResourcesNode(YAML::Node node, const SystemResourcesTy
     SetNodeValue(memoryNode[YAML_SIZE], ProjMgrUtils::ULLToHex(item.size));
     SetNodeValue(memoryNode[YAML_PNAME], item.pname);
     SetNodeValue(memoryNode[YAML_ALIAS], item.alias);
+    if (item.bDefault.has_value()) {
+      memoryNode[YAML_DEFAULT] = item.bDefault.value();
+    }
     SetNodeValue(memoryNode[YAML_FROM_PACK], item.fromPack);
     node[YAML_MEMORY].push_back(memoryNode);
+  }
+  for (const auto& item : systemResources.processors) {
+    YAML::Node processorNode;
+    const vector<pair<const string, const string&>> attrMap = {
+      { YAML_CORE      , item.core      },
+      { YAML_REVISION  , item.revision  },
+      { YAML_PNAME     , item.pname     },
+      { YAML_ENDIAN    , item.endian    },
+      { YAML_FPU       , item.fpu       },
+      { YAML_MPU       , item.mpu       },
+      { YAML_DSP       , item.dsp       },
+      { YAML_TRUSTZONE , item.trustzone },
+      { YAML_MVE       , item.mve       },
+      { YAML_PACBTI    , item.pacbti    },
+    };
+    for (const auto& [key, attr] : attrMap) {
+      SetNodeValue(processorNode[key], attr);
+    }    
+    processorNode[YAML_MAX_CLOCK] = item.maxClock;
+    if (item.punits.has_value()) {
+      processorNode[YAML_PUNITS] = item.punits.value();
+    }
+    if (item.cdecp.has_value()) {
+      processorNode[YAML_CDECP] = ProjMgrUtils::ULLToHex(item.cdecp.value(), 2);
+    }
+    node[YAML_PROCESSORS].push_back(processorNode);
   }
 }
 
@@ -114,7 +190,15 @@ void ProjMgrCbuildRun::SetDebuggerNode(YAML::Node node, const DebuggerType& debu
     SetNodeValue(node[YAML_START_PNAME], debugger.startPname);
     SetGdbServerNode(node[YAML_GDBSERVER], debugger.gdbserver);
     SetTelnetNode(node[YAML_TELNET], debugger.telnet);
+    SetSystemViewNode(node[YAML_SYSTEMVIEW], debugger.systemView);
+    SetDeviceSettingsNode(node[YAML_DEVICE_SETTINGS], debugger.deviceSettings);
     SetCustomNodes(node, debugger.custom);
+  }
+}
+
+void ProjMgrCbuildRun::SetDeviceSettingsNode(YAML::Node node, const map<string, string>& deviceSettings) {
+  for (const auto& [key, value] : deviceSettings) {
+    node[key] = value;
   }
 }
 
@@ -164,10 +248,26 @@ void ProjMgrCbuildRun::SetTelnetNode(YAML::Node node, const std::map<std::string
   }
 }
 
+void ProjMgrCbuildRun::SetSystemViewNode(YAML::Node node, const SystemViewItem& systemView) {
+  if (!systemView.file.empty()) {
+    SetNodeValue(node[YAML_FILE], FormatPath(systemView.file, m_directory));
+  }
+  if (systemView.autoStart.has_value()) {
+    node[YAML_AUTO_START] = systemView.autoStart.value();
+  }
+  if (systemView.autoStop.has_value()) {
+    node[YAML_AUTO_STOP] = systemView.autoStop.value();
+  }
+}
+
 void ProjMgrCbuildRun::SetDebugVarsNode(YAML::Node node, const DebugVarsType& debugVars) {
   if (!debugVars.vars.empty()) {
     SetNodeValue(node[YAML_VARS], "|\n" + debugVars.vars);
   }
+}
+
+void ProjMgrCbuildRun::SetDebugSequencesConfNode(YAML::Node node, const DebugSequencesConfType& sequenceConf) {
+  SetNodeValue(node[YAML_TRACE_SETUP], sequenceConf.traceSetup);
 }
 
 void ProjMgrCbuildRun::SetDebugSequencesNode(YAML::Node node, const std::vector<DebugSequencesType>& sequences) {

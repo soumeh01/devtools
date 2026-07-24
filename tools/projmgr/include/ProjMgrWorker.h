@@ -96,12 +96,17 @@ struct ToolchainItem {
  *        pack information pack,
  *        path to pack path,
  *        origin file,
+ *        selected-by entry,
+ *        resolved pack identifier,
+ *        missing flag,
 */
 struct PackageItem {
   PackInfo    pack;
   std::string path;
   std::string origin;
   std::string selectedBy;
+  std::string resolvedTo;
+  bool missing = false;
 };
 
 /**
@@ -170,6 +175,26 @@ struct ComponentFileItem {
   std::string scope;
   std::string version;
   std::string select;
+};
+
+/**
+ * @brief NPU info item containing
+ *        vendor name
+ *        device name
+ *        processor name
+ *        core name
+ *        NPU type
+ *        NPU MACs
+ *        absolute path of VELA config file
+*/
+struct NpuInfoItem {
+  std::string vendorName;
+  std::string deviceName;
+  std::string pname;
+  std::string dcore;
+  std::string type;
+  std::string macs;
+  std::string velaAbsolutePath;
 };
 
 /**
@@ -254,6 +279,7 @@ struct ContextTypesItem {
  *        related aggregates
 */
 struct ValidationCondition {
+  RteItem::ConditionResult result;
   std::string expression;
   StrSet aggregates;
 };
@@ -361,6 +387,7 @@ struct TemplateItem {
  *        debug protocol (jtag or swd)
  *        debug clock speed
  *        debug configuration file
+ *        device settings
  *        start pname
  *        list of gdbserver items
  *        list of telnet options items
@@ -372,9 +399,11 @@ struct DebuggerType {
   std::string protocol;
   std::optional<unsigned long long> clock;
   std::string dbgconf;
+  std::map<std::string, std::string> deviceSettings;
   std::string startPname;
   std::vector<GdbServerItem> gdbserver;
   std::map<std::string, TelnetOptionsItem> telnet;
+  SystemViewItem systemView;
   CustomItem custom;
 };
 
@@ -472,6 +501,7 @@ struct VariablesConfiguration {
  *        debugger
  *        default dbgconf
  *        images
+ *        vector of NPUs
  *        selected target-set
  *        load offset for generated binary
  *        elf load mode
@@ -480,6 +510,8 @@ struct VariablesConfiguration {
  *        west on flag
  *        layer variables configurations
  *        unresolved components
+ *        map of available packs for locked packs
+ *        map of sequences to expanded absolute paths
 */
 struct ContextItem {
   CdefaultItem* cdefault = nullptr;
@@ -545,6 +577,7 @@ struct ContextItem {
   DebuggerType debugger;
   std::pair<std::string, RteFileInstance*> dbgconf;
   std::vector<ImageItem> images;
+  std::vector<NpuInfoItem> npuInfoItems;
   std::string targetSet;
   std::string loadOffset;
   std::string elfLoadMode;
@@ -553,6 +586,9 @@ struct ContextItem {
   bool westOn = false;
   std::vector<VariablesConfiguration> variablesConfigurations;
   std::set<RteComponentInstance*> unresolvedComponents;
+  StrMap availablePackVersions;
+  StrMap absPathSequences;
+  StrVec lockedPacks;
 };
 
 /**
@@ -627,10 +663,11 @@ public:
    * @brief list available packs
    * @param reference to list of packs
    * @param bListMissingPacksOnly only missing packs
+   * @param bLocked print available update version for locked packs
    * @param filter words to filter results
    * @return true if executed successfully
   */
-  bool ListPacks(std::vector<std::string>& packs, bool bListMissingPacksOnly, const std::string& filter = RteUtils::EMPTY_STRING);
+  bool ListPacks(std::vector<std::string>& packs, bool bListMissingPacksOnly, bool bLocked = false, const std::string& filter = RteUtils::EMPTY_STRING);
 
   /**
    * @brief list available boards
@@ -647,6 +684,14 @@ public:
    * @return true if executed successfully
   */
   bool ListDevices(std::vector<std::string>& devices, const std::string& filter = RteUtils::EMPTY_STRING);
+
+  /**
+   * @brief list available NPUs
+   * @param reference to list of NPUs
+   * @param filter words to filter results
+   * @return true if executed successfully
+  */
+  bool ListNpus(std::vector<std::string>& npus, const std::string& filter = RteUtils::EMPTY_STRING);
 
   /**
    * @brief list available components
@@ -1021,6 +1066,24 @@ public:
   bool CheckMissingFiles();
 
   /**
+   * @brief check selected packs against latest versions
+   * @param vector of output lines describing pack update status
+   * @param optional filter
+   * @return true if check completed successfully
+  */
+  bool CheckPackVerAndCollectRelNotes(std::vector<std::string>& results, const std::string& filter = RteUtils::EMPTY_STRING);
+
+  /**
+   * @brief read release notes for versions newer than the current version and up to the latest version
+   * @param resolved path to the latest PDSC file
+   * @param version currently used by the project
+   * @param latest available version resolved for the latest pack or the .pidx file
+   * @param output list of collected release note strings for versions to be filled
+   * @return true if at least one matching release note was found, otherwise false
+   */
+  bool ReadPackReleaseNotes(const std::string& pdscFile, const std::string& currentVersion, const std::string& latestVersion, std::vector<std::string>& releaseNotes);
+
+  /**
    * @brief collect unused packs for each selected context
   */
   void CollectUnusedPacks();
@@ -1045,6 +1108,12 @@ public:
    * @return true if there is no error
   */
   bool SetTargetAttributes(ContextItem& context, std::map<std::string, std::string>& attributes);
+
+  /**
+   * @brief collect NPU information
+   * @param context item
+  */
+  void CollectNpuInfo(ContextItem& context);
 
   /**
    * @brief add required components
@@ -1115,6 +1184,42 @@ public:
   bool ElaborateVariablesConfigurations();
 
   /**
+   * @brief Resolve access sequences and normalize a path relative to a reference directory.
+   *
+   * This expands static and dynamic access sequences in `item`, optionally records
+   * context dependencies for cross-context references, and converts the final path
+   * to be relative to `outDir` using `ref` as the input base directory when no
+   * context-based replacement is performed.
+   *
+   * @param context current context used for variable expansion and dependency tracking
+   * @param item input string to process; replaced in-place with the resolved value
+   * @param ref base directory used to resolve relative paths
+   * @param genDep add referenced contexts to `context.dependsOn` when true
+   * @param outDir output directory used when rebasing the resulting path; defaults to the context cprj directory when empty
+   * @param withHeadingDot preserve a leading `./` when generating relative paths
+   * @param solutionLevel allow solution-level context matching for access sequences
+   * @return true if the sequence was resolved successfully, otherwise false
+  */
+  bool ProcessSequenceRelative(ContextItem& context, std::string& item, const std::string& ref = std::string(),
+    bool genDep = true, std::string outDir = std::string(), bool withHeadingDot = false, bool solutionLevel = false);
+
+  /**
+   * @brief parse and load context layers
+   * @param context item
+   * @return true if there is no error
+  */
+  bool ParseContextLayers(ContextItem& context);
+
+  /**
+   * @brief process context precedences
+   * @param context item
+   * @param scope: process board, device or both
+   * @param rerun flag to reprocess
+   * @return true if there is no error
+  */
+  bool ProcessPrecedences(ContextItem& context, BoardOrDevice process = BoardOrDevice::None, bool rerun = false);
+
+  /**
    * @brief clear worker members for reloading a solution
    * @return true if there is no error
   */
@@ -1140,6 +1245,8 @@ public:
     m_missingFiles.clear();
     m_types = {};
     m_activeTargetType.clear();
+    m_activeTargetSet = {};
+    m_missingToolchains.clear();
     m_undefCompiler = false;
     m_isSetupCommand = false;
   };
@@ -1197,7 +1304,6 @@ protected:
   bool CheckContextFilters(const TypeFilter& typeFilter, const ContextItem& context);
   bool GetTypeContent(ContextItem& context);
   bool GetProjectSetup(ContextItem& context);
-  bool ProcessPrecedences(ContextItem& context, BoardOrDevice process = BoardOrDevice::None, bool rerun = false);
   bool ProcessPrecedence(StringCollection& item);
   bool ProcessCompilerPrecedence(StringCollection& item, bool acceptRedefinition = false);
   bool ProcessDevicePrecedence(StringCollection& item);
@@ -1217,7 +1323,6 @@ protected:
   bool ProcessSequencesRelatives(ContextItem& context, bool rerun);
   bool ProcessSequencesRelatives(ContextItem& context, std::vector<std::string>& src, const std::string& ref = std::string(), std::string outDir = std::string(), bool withHeadingDot = false, bool solutionLevel = false);
   bool ProcessSequencesRelatives(ContextItem& context, BuildType& build, const std::string& ref = std::string());
-  bool ProcessSequenceRelative(ContextItem& context, std::string& item, const std::string& ref = std::string(), std::string outDir = std::string(), bool withHeadingDot = false, bool solutionLevel = false);
   bool ProcessOutputFilenames(ContextItem& context);
   bool ProcessLinkerOptions(ContextItem& context);
   bool ProcessLinkerOptions(ContextItem& context, const LinkerItem& linker, const std::string& ref);
@@ -1229,7 +1334,8 @@ protected:
   void AddMiscUniquely(MiscItem& dst, std::vector<MiscItem>& srcVec);
   bool AddGroup(const GroupNode& src, std::vector<GroupNode>& dst, ContextItem& context, const std::string root);
   bool AddFile(const FileNode& src, std::vector<FileNode>& dst, ContextItem& context, const std::string root);
-  bool AddComponent(const ComponentItem& src, const std::string& layer, std::vector<std::pair<ComponentItem, std::string>>& dst, TypePair type, ContextItem& context);
+  bool AddComponent(const ComponentItem& src, const std::string& layer, std::vector<std::pair<ComponentItem,
+    std::string>>& dst, TypePair type, ContextItem& context, bool ignoreDuplicates = false);
   void GetDeviceItem(const std::string& element, DeviceItem& device) const;
   void GetBoardItem (const std::string& element, BoardItem& board) const;
   bool GetPrecedentValue(std::string& outValue, const std::string& element) const;
@@ -1268,12 +1374,11 @@ protected:
   void SetDefaultLinkerScript(ContextItem& context);
   void CheckAndGenerateRegionsHeader(ContextItem& context);
   bool GenerateRegionsHeader(ContextItem& context, std::string& generatedRegionsFile);
-  void ExpandAccessSequence(const ContextItem& context, const ContextItem& refContext, const std::string& sequence, const std::string& outdir, std::string& item, bool withHeadingDot);
+  void ExpandAccessSequence(ContextItem& context, const ContextItem& refContext, const std::string& sequence, const std::string& outdir, std::string& item, bool withHeadingDot);
   void ExpandPackDir(ContextItem& context, const std::string& pack, std::string& item);
   bool GetGeneratorDir(const RteGenerator* generator, ContextItem& context, const std::string& layer, std::string& genDir);
   bool GetGeneratorOptions(ContextItem& context, const std::string& layer, GeneratorOptionsItem& options);
   bool GetExtGeneratorOptions(ContextItem& context, const std::string& layer, GeneratorOptionsItem& options);
-  bool ParseContextLayers(ContextItem& context);
   bool AddPackRequirements(ContextItem& context, const std::vector<PackItem>& packRequirements);
   void InsertPackRequirements(const std::vector<PackItem>& src, std::vector<PackItem>& dst, std::string base);
   void CheckTypeFilterSpelling(const TypeFilter& typeFilter);
@@ -1298,8 +1403,11 @@ protected:
   bool IsEnvironmentCompatible(const std::string& environment, const StrVec& filter);
   bool HasCompatibleEnvironment(const Collection<RteItem*>& environments, const StrVec& filter);
   template<class T> bool CheckFilter(const std::string& filter, const T& item);
-  void ResolvePackRequirement(ContextItem& context, const PackItem& packEntry);
+  void ResolvePackRequirement(ContextItem& context, const PackItem& packEntry, bool ignoreCBuildPack);
   void FormatResolvedPackIds();
+  void RetrieveToolchainConfigFiles();
+  bool PushImageOnlyTargetType(const std::string& targetType, const std::vector<ImageItem>& images, StrVec& imageOnlyTargetTypes);
+
 };
 
 #endif  // PROJMGRWORKER_H

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2025 Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -459,6 +459,28 @@ TEST_F(ProjMgrUtilsUnitTests, ReplaceDelimiters) {
   EXPECT_EQ("path_with_spaces", ProjMgrUtils::ReplaceDelimiters("path/with spaces"));
 }
 
+TEST_F(ProjMgrUtilsUnitTests, AdjustRelativePaths) {
+  const string baseDir = testoutput_folder + "/AdjustRelativePaths";
+  const string refDir = baseDir + "/ref";
+  const string outDir = baseDir + "/out/sub";
+
+  RteFsUtils::CreateDirectories(refDir + "/assets");
+  RteFsUtils::CreateDirectories(baseDir + "/shared");
+  RteFsUtils::CreateDirectories(outDir);
+
+  vector<string> paths = {
+    "prefix ./assets/file.txt suffix",
+    "copy ../shared/config.yml",
+    "absolute/path/unchanged",
+  };
+
+  ProjMgrUtils::AdjustRelativePaths(paths, refDir, outDir);
+
+  EXPECT_EQ("prefix ../../ref/assets/file.txt suffix", paths[0]);
+  EXPECT_EQ("copy ../../shared/config.yml", paths[1]);
+  EXPECT_EQ("absolute/path/unchanged", paths[2]);
+}
+
 TEST_F(ProjMgrUtilsUnitTests, FindReferencedContext) {
   const vector<string> selectedContexts = {
     "Project1.Debug+Target",
@@ -512,6 +534,38 @@ TEST_F(ProjMgrUtilsUnitTests, FormatPath) {
   }
 }
 
+TEST_F(ProjMgrUtilsUnitTests, ParseDbgconfFile) {
+  const string testDir = testoutput_folder + "/ParseDbgconfFile";
+  const string dbgconf = testDir + "/test.dbgconf";
+  RteFsUtils::CreateDirectories(testDir);
+  ASSERT_TRUE(RteFsUtils::CreateTextFile(dbgconf,
+    "// leading comment\n"
+    "ReleaseM0OnConnect = 1; // trailing comment\n"
+    "/* block comment with ignored = assignment; */\n"
+    "RoutingTPIU =\n"
+    "  0x00000000;\n"
+    "TracePins = (1 << 18) | 3;\n"
+    "VecResetWithPeriph /* inline block comment */ = 1;\n"
+    "NestedBlockComment = 3 /* outer /* inner */ still outer */;\n"
+    "LineCommentInBlock = 4 /* // not a line comment\n"
+    "  still block comment */;\n"
+    "BlockCommentInLine = 5; // /* not a block comment */\n"
+    "MissingTerminator = 2\n"));
+
+  const map<string, string> expected = {
+    {"ReleaseM0OnConnect", "1"},
+    {"RoutingTPIU", "0x00000000"},
+    {"TracePins", "(1 << 18) | 3"},
+    {"VecResetWithPeriph", "1"},
+    {"NestedBlockComment", "3"},
+    {"LineCommentInBlock", "4"},
+    {"BlockCommentInLine", "5"},
+    {"MissingTerminator", "2"},
+  };
+  EXPECT_EQ(expected, ProjMgrUtils::ParseDbgconfFile(dbgconf));
+  EXPECT_TRUE(ProjMgrUtils::ParseDbgconfFile(testDir + "/missing.dbgconf").empty());
+}
+
 TEST_F(ProjMgrUtilsUnitTests, ContainsIncompatiblePack) {
   ProjMgrKernel::Get()->SetCmsisPackRoot(testcmsispack_folder);
   std::list<std::string> pdscFiles;
@@ -530,12 +584,4 @@ TEST_F(ProjMgrUtilsUnitTests, ULLToHex) {
   EXPECT_EQ("0x00000000", ProjMgrUtils::ULLToHex(0));
   EXPECT_EQ("0xDEADBEEF", ProjMgrUtils::ULLToHex(3735928559));
   EXPECT_EQ("0xFFFFFFFF", ProjMgrUtils::ULLToHex(4294967295));
-}
-
-TEST_F(ProjMgrUtilsUnitTests, NormalizeLineEndings) {
-  EXPECT_EQ("abc\ndef\n", ProjMgrUtils::NormalizeLineEndings("abc\r\ndef\r\n"));
-  EXPECT_EQ("abc\ndef\n", ProjMgrUtils::NormalizeLineEndings("abc\rdef\r"));
-  EXPECT_EQ("abc\ndef\n", ProjMgrUtils::NormalizeLineEndings("abc\rdef\n"));
-  EXPECT_EQ("abc\ndef\n", ProjMgrUtils::NormalizeLineEndings("abc\ndef\r"));
-  EXPECT_EQ("abc\ndef\n", ProjMgrUtils::NormalizeLineEndings("abc\ndef\n"));
 }

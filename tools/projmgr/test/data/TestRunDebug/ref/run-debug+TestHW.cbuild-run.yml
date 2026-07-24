@@ -6,20 +6,25 @@ cbuild-run:
   compiler: AC6
   board: Keil::RteTest Test device variant:1.1.1
   board-pack: ARM::RteTest_DFP@0.2.0
+  board-pack-path: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0
   device: ARM::RteTest_ARMCM4_NOFP
   device-pack: ARM::RteTest_DFP@0.2.0
+  device-pack-path: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0
   output:
     - file: run-debug/TestHW/run-debug.axf
       info: generate by run-debug+TestHW
       type: elf
+      project: run-debug
       load: none
     - file: run-debug/TestHW/run-debug.hex
       info: generate by run-debug+TestHW
       type: hex
+      project: run-debug
       load: none
     - file: run-debug/TestHW/run-debug.bin
       info: generate by run-debug+TestHW
       type: bin
+      project: run-debug
       load: image
       load-offset: 0x0000A000
     - file: ../../data/TestRunDebug/customImage.bin
@@ -33,16 +38,25 @@ cbuild-run:
         access: rx
         start: 0x00000000
         size: 0x00040000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: SRAM
         access: rwx
         start: 0x20000000
         size: 0x00020000
+        default: true
         from-pack: ARM::RteTest_DFP@0.2.0
       - name: CustomMemory
         access: rwx
         start: 0x80000000
         size: 0x00010000
+    processors:
+      - core: Cortex-M4
+        revision: r0p1
+        endian: configurable
+        fpu: none
+        mpu: present
+        max-clock: 10000000
   system-descriptions:
     - file: ${CMSIS_PACK_ROOT}/ARM/RteTest_DFP/0.2.0/Device/ARM/SVD/ARMCM4.svd
       type: svd
@@ -51,14 +65,18 @@ cbuild-run:
     info: Info target-set
     protocol: jtag
     clock: 20000000
-    dbgconf: ../../data/TestRunDebug/RTE/Device/RteTest1/RteTest1.dbgconf
     gdbserver:
       - port: 3333
+    device-settings:
+      reset-mode: hardware
+      trace-port: enabled
   debug-vars:
     vars: |
       __var DbgMCU_CR      = 0x00000007;   // DBGMCU_CR: DBG_SLEEP, DBG_STOP, DBG_STANDBY
       __var TraceClk_Pin   = 0x00040003;   // PE2
       __var TraceD0_Pin    = 0x00040003;   // PE4
+  debug-sequences-conf:
+    trace-setup: full
   debug-sequences:
     - name: DebugDeviceUnlock
       blocks:
@@ -145,6 +163,15 @@ cbuild-run:
       size: 0x00010000
       ram-start: 0x20000000
       ram-size: 0x00020000
+  flash-info:
+    - name: Family Flash
+      start: 0x80000000
+      page-size: 0x00000100
+      blocks:
+        - count: 64
+          size: 0x00000100
+        - count: 128
+          size: 0x00000400
   debug-topology:
     debugports:
       - dpid: 0
